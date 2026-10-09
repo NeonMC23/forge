@@ -1,0 +1,8 @@
+version = 1
+name = "forge"
+
+[root]
+id = "root"
+path = "."
+remote = "git@github.com:NeonMC23/forge.git"
+branch = "main"
