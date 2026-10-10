@@ -11,3 +11,8 @@ branch = "main"
 id = "RAMforge"
 path = "RAMforge"
 remote = "git@github.com:NeonMC23/RAMforge.git"
+
+[[repositories]]
+id = "forgeCORE"
+path = "forgeCORE"
+remote = "git@github.com:NeonMC23/forgeCORE.git"
