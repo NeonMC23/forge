@@ -1,0 +1,49 @@
+   Compiling forge-core v0.1.0 (/home/neon/Documents/CODE LOCAL/forge/forgeCORE/crates/forge-core)
+error[E0432]: unresolved import `forge_core::attention`
+ --> crates/forge-core/tests/attention_gqa.rs:2:17
+  |
+2 | use forge_core::attention::{attention, AttentionDims};
+  |                 ^^^^^^^^^ could not find `attention` in `forge_core`
+
+error[E0432]: unresolved import `forge_core::kv`
+ --> crates/forge-core/tests/kv_cache.rs:2:17
+  |
+2 | use forge_core::kv::KvCache;
+  |                 ^^ could not find `kv` in `forge_core`
+
+error[E0432]: unresolved import `forge_core::checkpoint`
+  --> crates/forge-core/tests/tiny_model.rs:12:17
+   |
+12 | use forge_core::checkpoint::{format_summary, summarize, top_k};
+   |                 ^^^^^^^^^^ could not find `checkpoint` in `forge_core`
+
+error[E0432]: unresolved import `forge_core::kv`
+  --> crates/forge-core/tests/tiny_model.rs:13:17
+   |
+13 | use forge_core::kv::KvCache;
+   |                 ^^ could not find `kv` in `forge_core`
+
+error[E0432]: unresolved imports `forge_core::model::forward_token`, `forge_core::model::prefill`, `forge_core::model::LayerTrace`, `forge_core::model::LayerWeights`, `forge_core::model::ModelDims`, `forge_core::model::ModelWeights`, `forge_core::model::TokenTrace`
+  --> crates/forge-core/tests/tiny_model.rs:15:5
+   |
+15 |     forward_token, prefill, LayerTrace, LayerWeights, ModelDims, ModelWeights, TokenTrace,
+   |     ^^^^^^^^^^^^^  ^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^  ^^^^^^^^^^ no `TokenTrace` in `model`
+   |     |              |        |           |             |          |
+   |     |              |        |           |             |          no `ModelWeights` in `model`
+   |     |              |        |           |             no `ModelDims` in `model`
+   |     |              |        |           no `LayerWeights` in `model`
+   |     |              |        no `LayerTrace` in `model`
+   |     |              no `prefill` in `model`
+   |     no `forward_token` in `model`
+
+error[E0432]: unresolved import `forge_core::shape`
+  --> crates/forge-core/tests/tiny_model.rs:17:17
+   |
+17 | use forge_core::shape::{MatrixF32, MatrixShape};
+   |                 ^^^^^ could not find `shape` in `forge_core`
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `forge-core` (test "kv_cache") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `forge-core` (test "attention_gqa") due to 1 previous error
+error: could not compile `forge-core` (test "tiny_model") due to 4 previous errors
