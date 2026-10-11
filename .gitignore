@@ -1,7 +1,7 @@
-# Shared build artifacts
+# Shared Cargo build artifacts
 /target/
 
-# Local models and large binary files
+# Local models
 /models/
 *.gguf
 *.bin
