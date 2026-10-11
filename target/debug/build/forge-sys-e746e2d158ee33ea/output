@@ -1,7 +1,0 @@
-cargo:rustc-link-search=native=/home/neon/Documents/CODE LOCAL/forge/native/build/bin
-cargo:rustc-link-lib=ggml
-cargo:rustc-link-lib=ggml-base
-cargo:rustc-link-lib=ggml-cpu
-cargo:rustc-link-lib=llama
-cargo:rustc-link-arg=-Wl,-rpath,/home/neon/Documents/CODE LOCAL/forge/native/build/bin
-cargo:rerun-if-env-changed=FORGE_LLAMA_DIR

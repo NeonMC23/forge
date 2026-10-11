@@ -1,2 +1,0 @@
-cargo:rustc-link-arg=-Wl,-rpath,/home/neon/Documents/CODE LOCAL/forge/native/build/bin
-cargo:rerun-if-env-changed=FORGE_LLAMA_DIR

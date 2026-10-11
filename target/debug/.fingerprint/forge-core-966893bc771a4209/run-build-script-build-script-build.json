@@ -1,1 +1,0 @@
-{"rustc":16765515066093652489,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[9159990831967074838,"build_script_build",false,10825600317789204965]],"local":[{"RerunIfEnvChanged":{"var":"FORGE_LLAMA_DIR","val":"/home/neon/Documents/CODE LOCAL/forge/native"}}],"rustflags":[],"config":0,"compile_kind":0}
