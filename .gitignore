@@ -1,0 +1,32 @@
+# Shared build artifacts
+/target/
+
+# Local models and large binary files
+/models/
+*.gguf
+*.bin
+
+# Runtime logs
+/logs/
+*.log
+*.log.*
+
+# Native build artifacts
+/native/build/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*.orig
+*.rej
+*~
+
+# Crash dumps
+/core
+/core.*
+
+# Editor and operating system files
+.DS_Store
+Thumbs.db
