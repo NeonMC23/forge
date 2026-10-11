@@ -1,0 +1,476 @@
+   Compiling libc v0.2.189
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling serde_json v1.0.151
+   Compiling serde v1.0.229
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling syn v3.0.3
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-query v1.1.5
+   Compiling colorchoice v1.0.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle v1.0.14
+   Compiling anstyle-parse v1.0.0
+   Compiling anyhow v1.0.104
+   Compiling heck v0.5.0
+   Compiling clap_lex v1.1.0
+   Compiling anstream v1.0.0
+   Compiling strsim v0.11.1
+   Compiling clap_builder v4.6.6
+   Compiling getrandom v0.2.17
+   Compiling getrandom v0.4.3
+   Compiling tempfile v3.27.0
+   Compiling rand_core v0.6.4
+   Compiling rand_chacha v0.3.1
+   Compiling rand v0.8.7
+   Compiling serde_derive v1.0.229
+   Compiling clap_derive v4.6.4
+   Compiling clap v4.6.6
+   Compiling ramforge-core v0.1.0 (/home/neon/Documents/CODE LOCAL/forge/RAMforge/crates/ramforge-core)
+   Compiling ramforge-runtime v0.1.0 (/home/neon/Documents/CODE LOCAL/forge/RAMforge/crates/ramforge-runtime)
+   Compiling ramforge-cli v0.1.0 (/home/neon/Documents/CODE LOCAL/forge/RAMforge/crates/ramforge-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.41s
+     Running unittests src/lib.rs (/home/neon/Documents/CODE LOCAL/forge/target/debug/deps/ramforge_cli-d79ef88f1e542fcd)
+
+running 44 tests
+test tui::app::tests::advanced_preferences_are_passed_to_user_profile_validation ... ok
+test tui::app::tests::back_navigation_and_quit_are_consistent ... ok
+test tui::app::tests::calibration_failure_returns_to_a_structured_error_state ... ok
+test tui::app::tests::calibration_selection_is_explicit ... ok
+test tui::app::tests::compatible_loaded_plan_requires_explicit_compilation ... ok
+test tui::app::tests::compiler_failure_stays_recoverable_on_plan_review ... ok
+test tui::app::tests::custom_max_tokens_accepts_digits_updates_value ... ok
+test tui::app::tests::custom_max_tokens_backspace_and_escape_restore ... ok
+test tui::app::tests::custom_max_tokens_enter_confirms_empty_rejected ... ok
+test tui::app::tests::custom_max_tokens_propagates_to_generate_action ... ok
+test tui::app::tests::custom_max_tokens_rejects_leading_zero ... ok
+test tui::app::tests::custom_max_tokens_requires_enter_to_edit ... ok
+test tui::app::tests::custom_max_tokens_zero_is_rejected_at_generation ... ok
+test tui::app::tests::generation_result_and_error_paths_are_recoverable ... ok
+test tui::app::tests::incompatible_loaded_plan_cannot_request_compilation ... ok
+test tui::app::tests::initial_state_is_welcome_and_does_not_request_generation ... ok
+test tui::app::tests::left_right_cycles_presets_without_auto_editing ... ok
+test tui::app::tests::load_plan_requests_exact_path_and_recovers_from_errors ... ok
+test tui::app::tests::loaded_plan_model_context_requests_compatibility_analysis ... ok
+test tui::app::tests::model_input_accepts_exact_path_and_rejects_empty_input ... ok
+test tui::app::tests::persistence_failure_stays_on_save_screen ... ok
+test tui::app::tests::planner_failure_returns_to_a_structured_error_state ... ok
+test tui::app::tests::preference_changes_use_existing_profile_contracts_without_clamping ... ok
+test tui::app::tests::preference_left_and_right_change_horizontal_options ... ok
+test tui::app::tests::preference_text_editing_requires_explicit_enter ... ok
+test tui::app::tests::prompt_submission_is_the_only_generation_action ... ok
+test tui::app::tests::recalibration_recommendation_never_starts_calibration_automatically ... ok
+test tui::app::tests::runtime_activation_is_an_explicit_post_validation_action ... ok
+test tui::app::tests::runtime_construction_errors_are_distinct_and_recoverable ... ok
+test tui::app::tests::successful_validation_does_not_generate_and_preserves_explicit_save ... ok
+test tui::app::tests::up_down_moves_during_edit_commit_on_valid_value ... ok
+test tui::app::tests::welcome_exposes_load_plan_and_back_navigation ... ok
+test tui::app::tests::welcome_uses_arrow_navigation_only ... ok
+test tui::render::tests::calibration_screen_never_fabricates_results ... ok
+test tui::render::tests::compatibility_screen_uses_only_existing_categories ... ok
+test tui::render::tests::generation_result_renders_only_the_actual_latest_result ... ok
+test tui::render::tests::welcome_render_contains_real_actions_and_navigation ... ok
+test tui::terminal::tests::csi_arrows_are_consumed_as_single_navigation_events ... ok
+test tui::terminal::tests::frame_clips_width_and_preserves_top_and_bottom_on_short_terminals ... ok
+test tui::terminal::tests::frame_removes_control_sequences_from_content ... ok
+test tui::terminal::tests::ss3_arrows_are_consumed_as_single_navigation_events ... ok
+test tui::terminal::tests::standalone_escape_and_printable_j_k_remain_distinct ... ok
+test tui::tests::missing_plan_file_preserves_persistence_error ... ok
+test tui::tests::save_plan_requires_an_execution_plan ... ok
+
+test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/home/neon/Documents/CODE LOCAL/forge/target/debug/deps/ramforge-f820ccedceebecb5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/ramforge-tui.rs (/home/neon/Documents/CODE LOCAL/forge/target/debug/deps/ramforge_tui-a028a1a4277a37ad)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/home/neon/Documents/CODE LOCAL/forge/target/debug/deps/ramforge_core-5d1d08c514ee48d1)
+
+running 122 tests
+test cache::tests::test_budgeted_eviction_releases_budget ... ok
+test cache::tests::test_budgeted_insert_charges_budget ... ok
+test cache::tests::test_budgeted_insert_skips_when_budget_full ... ok
+test cache::tests::test_clear_budgeted_releases_everything ... ok
+test cache::tests::test_insert_and_hit ... ok
+test cache::tests::test_large_data_source_incremental_access ... ok
+test cache::tests::test_lru_eviction ... ok
+test cache::tests::test_oversized_entry ... ok
+test cache::tests::test_replace_existing ... ok
+test cache::tests::test_usage_never_exceeds_capacity ... ok
+test compute::tests::f32_matvec_uses_explicit_input_output_shape ... ok
+test compute::tests::gqa_attention_maps_query_heads_to_kv_heads ... ok
+test compute::tests::quantized_reference_covers_every_materialized_format ... ok
+test compute::tests::quantized_reference_matches_q4_0_and_q6_k_fused_rows ... ok
+test compute::tests::rms_norm_reference_has_explicit_f32_reduction ... ok
+test compute::tests::rope_half_split_nonzero_position_has_expected_rotation ... ok
+test compute::tests::rope_position_zero_is_identity ... ok
+test compute::tests::row_range_is_relative_to_local_output_slice ... ok
+test compute::tests::swiglu_reference_matches_silu_times_up ... ok
+test datasource::tests::test_coalesced_read_separates_logical_and_physical_profile_counts ... ok
+test datasource::tests::test_coalesced_reads_reuse_caller_buffer_capacity ... ok
+test datasource::tests::test_coalesced_small_gap_preserves_explicit_tensor_slices ... ok
+test datasource::tests::test_cursor_avoids_seek_for_adjacent_physical_reads ... ok
+test datasource::tests::test_datasource_reuses_open_handle_after_path_is_removed ... ok
+test datasource::tests::test_direct_f32_read_matches_logical_decode_and_layout ... ok
+test datasource::tests::test_direct_f32_read_preserves_edge_bit_patterns ... ok
+test datasource::tests::test_direct_f32_short_read_is_error ... ok
+test datasource::tests::test_invalid_file_offset_rejection ... ok
+test datasource::tests::test_invalid_range_rejection ... ok
+test datasource::tests::test_io_profile_counts_reads_and_bytes_when_enabled ... ok
+test datasource::tests::test_large_file_incremental_access ... ok
+test datasource::tests::test_valid_range_read ... ok
+test datasource::tests::test_valid_tensor_read ... ok
+test gguf::tests::test_alignment_override ... ok
+test gguf::tests::test_invalid_magic ... ok
+test gguf::tests::test_metadata_types ... ok
+test gguf::tests::test_parse_valid_minimal ... ok
+test gguf::tests::test_quantized_byte_length ... ok
+test gguf::tests::test_truncated_file ... ok
+test gguf::tests::test_unsupported_version ... ok
+test integration_tests::test_file_backed_no_payload_load ... ok
+test memory::tests::test_budget_accounting ... ok
+test memory::tests::test_budget_enforcement ... ok
+test memory::tests::test_duplicate_allocation ... ok
+test memory::tests::test_parse_invalid ... ok
+test memory::tests::test_parse_valid_sizes ... ok
+test memory::tests::test_rename_prefix_preserves_exact_accounting ... ok
+test memory::tests::test_resize_is_atomic_for_settle_and_failure ... ok
+test memory::tests::test_with_temp_insufficient_budget ... ok
+test memory::tests::test_with_temp_releases_on_error ... ok
+test memory::tests::test_with_temp_releases_on_success ... ok
+test memory::tests::test_with_temp_zero_bytes_is_noop ... ok
+test quant::tests::q4_0_row_range_uses_local_output_indexing ... ok
+test quant::tests::q6_k_row_range_uses_local_output_indexing_without_oob ... ok
+test quant::tests::test_q2_k_block_size ... ok
+test quant::tests::test_q2_k_decode ... ok
+test quant::tests::test_q3_k_block_size ... ok
+test quant::tests::test_q3_k_decode ... ok
+test quant::tests::test_q4_0_block_size ... ok
+test quant::tests::test_q4_0_decode ... ok
+test quant::tests::test_q4_0_fused_row_dot_matches_dequantize_reference_patterns_and_qwen_shape ... ok
+test quant::tests::test_q4_0_row_decode_handles_multiple_rows_and_blocks ... ok
+test quant::tests::test_q4_0_row_decode_overwrites_output_and_handles_edge_nibbles ... ok
+test quant::tests::test_q4_0_row_decode_preserves_validation_and_destination ... ok
+test quant::tests::test_q4_k_block_size ... ok
+test quant::tests::test_q4_k_decode ... ok
+test quant::tests::test_q5_k_block_size ... ok
+test quant::tests::test_q5_k_decode ... ok
+test quant::tests::test_q6_k_block_size ... ok
+test quant::tests::test_q6_k_decode ... ok
+test quant::tests::test_q8_0_block_size ... ok
+test quant::tests::test_q8_0_decode ... ok
+test quant::tests::test_q8_0_row_direct_decode_matches_reference_and_overwrites_output ... ok
+test quant::tests::test_q8_0_row_direct_decode_matches_reference_for_multiple_rows_and_blocks ... ok
+test quant::tests::test_q8_0_row_direct_decode_preserves_validation_and_error_cleanup ... ok
+test quant::tests::test_q8_k_block_size ... ok
+test quant::tests::test_q8_k_decode ... ok
+test quant::tests::test_quantized_matvec_q2_k ... ok
+test quant::tests::test_quantized_matvec_q3_k ... ok
+test quant::tests::test_quantized_matvec_q4_0 ... ok
+test quant::tests::test_quantized_matvec_q4_k ... ok
+test quant::tests::test_quantized_matvec_q5_k ... ok
+test quant::tests::test_quantized_matvec_q6_k ... ok
+test quant::tests::test_quantized_matvec_q8_0 ... ok
+test quant::tests::test_quantized_matvec_q8_k ... ok
+test quant::tests::test_truncated_block_rejection ... ok
+test resource::tests::budgets_preserve_host_device_separation_and_memory_budget_compatibility ... ok
+test resource::tests::classification_covers_persistent_layers_and_other_weights ... ok
+test resource::tests::domains_and_categories_are_separate_in_snapshot ... ok
+test resource::tests::duplicate_allocations_are_rejected_and_logical_file_actual_are_not_added ... ok
+test resource::tests::file_range_preserves_relative_absolute_and_unknown_length ... ok
+test resource::tests::ids_are_deterministic_and_do_not_depend_on_insertion_order ... ok
+test resource::tests::model_builder_keeps_tensor_ownership_and_ids_stable ... ok
+test resource::tests::requested_actual_padding_and_residency_keep_distinct_provenance ... ok
+test resource::tests::snapshot_preserves_unknown_and_estimated_values ... ok
+test resource::tests::tensor_sizing_covers_float_quantized_zero_and_unknown_types ... ok
+test tensor::tests::test_dequantize_row_explicit_layout ... ok
+test tensor::tests::test_descriptor_resident_bytes_match_owned_representations ... ok
+test tensor::tests::test_f16_decode ... ok
+test tensor::tests::test_f32_decode ... ok
+test tensor::tests::test_get_embedding_quantized_rows ... ok
+test tensor::tests::test_matvec_f16_nonsquare_ggml_layout ... ok
+test tensor::tests::test_matvec_f32_arity_error_not_silently_guessed ... ok
+test tensor::tests::test_matvec_f32_nonsquare_ggml_layout ... ok
+test tensor::tests::test_matvec_f32_nonsquare_reversed_dims ... ok
+test tensor::tests::test_quant_matvec_arity_error ... ok
+test tensor::tests::test_quant_matvec_q4_0_nonsquare_matches_reference ... ok
+test tensor::tests::test_quant_matvec_q4_k_nonsquare_matches_reference ... ok
+test tensor::tests::test_quantized_vs_f32_size ... ok
+test tensor::tests::test_resident_bytes_bf16_reflects_decoded_f32_storage ... ok
+test tensor::tests::test_resident_bytes_f16_reflects_decoded_f32_storage ... ok
+test tensor::tests::test_tensor_data_f32 ... ok
+test tensor::tests::test_tensor_data_q4_0 ... ok
+test tokenizer::tests::test_incremental_decoder_accumulates_utf8_and_matches_batch ... ok
+test tokenizer::tests::test_tokenizer_bos_eos ... ok
+test tokenizer::tests::test_tokenizer_bpe ... ok
+test tokenizer::tests::test_tokenizer_byte_fallback ... ok
+test tokenizer::tests::test_tokenizer_encode_decode ... ok
+test tokenizer::tests::test_tokenizer_encode_decode_roundtrip ... ok
+test tokenizer::tests::test_tokenizer_load ... ok
+test tokenizer::tests::test_tokenizer_punctuation ... ok
+test tokenizer::tests::test_tokenizer_whitespace ... ok
+
+test result: ok. 122 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (/home/neon/Documents/CODE LOCAL/forge/target/debug/deps/ramforge_runtime-e61bb6638efc992f)
+
+running 208 tests
+test accounting::tests::test_tensor_load_charge_factors_match_runtime_representations ... ok
+test accounting::tests::test_tensor_load_charge_overflow_is_rejected ... ok
+test backend::tests::test_explicit_zero_thread_count_is_rejected ... ok
+test backend::tests::test_matvec ... ok
+test backend::tests::test_matvec_arity_mismatch_is_error ... ok
+test backend::tests::test_matvec_non_square_ggml_layout ... ok
+test backend::tests::test_matvec_simd_vs_scalar ... ok
+test backend::tests::test_matvec_threaded ... ok
+test backend::tests::test_rmsnorm ... ok
+test backend::tests::test_silu ... ok
+test backend::tests::test_softmax ... ok
+test calibration::tests::test_calibration_identity_is_deterministic_and_versioned ... ok
+test calibration::tests::test_calibration_plan_level_mapping_is_explicit ... ok
+test calibration::tests::test_observation_states_are_explicit_and_validated ... ok
+test calibration::tests::test_runner_enforces_resource_limits_with_skipped_state ... ok
+test calibration::tests::test_runner_returns_measured_and_unavailable_states ... ok
+test calibration::tests::test_storage_measurement_is_bounded_and_structurally_valid ... ok
+test calibration::tests::test_strategy_measurement_is_explicitly_skipped_until_implemented ... ok
+test discovery::tests::test_block_storage_classification_uses_explicit_device_facts ... ok
+test discovery::tests::test_drm_card_name_and_vendor_parsing_are_conservative ... ok
+test discovery::tests::test_linux_cpu_and_memory_parsers_use_explicit_fields ... ok
+test discovery::tests::test_machine_fingerprint_excludes_available_ram_and_kernel_version ... ok
+test discovery::tests::test_machine_profile_allows_unknown_memory_and_gpu_inventory ... ok
+test discovery::tests::test_machine_profile_from_synthetic_facts_is_deterministic ... ok
+test discovery::tests::test_mount_parser_prefers_longest_matching_mount ... ok
+test discovery::tests::test_storage_discovery_accepts_small_regular_file ... ok
+test discovery::tests::test_storage_discovery_rejects_invalid_path_and_directory ... ok
+test discovery::tests::test_storage_fingerprint_omits_path_but_tracks_storage_identity ... ok
+test execution::tests::cpu_is_first_class_and_has_host_domain ... ok
+test execution::tests::device_capabilities_preserve_known_and_unknown_memory ... ok
+test execution::tests::execution_config_validates_without_mixing_resource_policy ... ok
+test execution::tests::explicit_selection_does_not_fallback ... ok
+test execution::tests::selection_syntax_is_explicit ... ok
+test execution::tests::stable_device_identity_is_derived_from_native_facts ... ok
+test execution::tests::unknown_native_device_kind_is_not_selectable ... ok
+test forgecore::tests::context_defaults_match_phase_two_cpu_contract ... ok
+test forgecore::tests::context_options_reject_invalid_values_before_native_calls ... ok
+test forgecore::tests::logits_are_owned_values ... ok
+test forgecore::tests::non_cpu_selection_is_rejected_before_model_load ... ok
+test inference::autoregressive_invariants::first_generated_token_is_next_decode_input_not_prompt_duplicate ... ok
+test inference::autoregressive_invariants::kv_cache_invariants_across_prompt_and_first_decodes ... ok
+test inference::qwen25_bounded_diagnostic::qwen25_bounded_numerical_trace ... ignored, requires the real Qwen2.5-1.5B Q4_0 GGUF and an explicit RAM budget
+test inference::qwen25_bounded_diagnostic::qwen25_layer_hook_dispatch_typechecks_without_model ... ok
+test inference::tests::greedy_runs_are_deterministic_not_an_error ... ok
+test inference::tests::outcome_marks_missing_eos_metadata_via_none ... ok
+test inference::tests::outcome_reports_max_tokens_stop_and_state_reset ... ok
+test inference::tests::outcome_surfaces_eos_metadata_from_tokenizer ... ok
+test inference::tests::second_generation_on_same_engine_reports_clean_reset ... ok
+test inference::tests::test_budget_too_small_failure ... ok
+test inference::tests::test_clear_kv_cache_releases_charge ... ok
+test inference::tests::test_default_runtime_config_preserves_legacy_execution_behavior ... ok
+test inference::tests::test_end_to_end_inference ... ok
+test inference::tests::test_engine_reusable_after_failed_generate ... ok
+test inference::tests::test_explicit_runtime_config_reaches_execution_components ... ok
+test inference::tests::test_failed_generate_releases_kv_charge ... ok
+test inference::tests::test_generate_twice_same_engine ... ok
+test inference::tests::test_gqa_forward_matches_scalar_reference ... ok
+test inference::tests::test_layer_cache_hits_preserve_generation_numerics ... ok
+test inference::tests::test_out_of_core_inference ... ok
+test inference::tests::test_qwen2_biased_forward_matches_reference ... ok
+test inference::tests::test_single_token_skips_terminal_forward_and_redundant_layer_reads ... ok
+test inference::tests::test_streaming_output_profile_and_memory_report ... ok
+test kv_cache::tests::test_kv_cache_append ... ok
+test kv_cache::tests::test_kv_cache_bytes_for_tokens ... ok
+test kv_cache::tests::test_kv_cache_chunked_growth_preserves_data ... ok
+test kv_cache::tests::test_kv_cache_explicit_read_ranges ... ok
+test kv_cache::tests::test_kv_cache_full ... ok
+test kv_cache::tests::test_kv_cache_memory ... ok
+test layer::tests::test_layer_grouping ... ok
+test layer::tests::test_persistent_descriptors ... ok
+test layer_cache::tests::test_cache_hit_and_lru_eviction_release_budget ... ok
+test layer_cache::tests::test_headroom_eviction_and_clear_release_exact_charges ... ok
+test layer_cache::tests::test_oversized_insert_is_skipped_without_accounting_corruption ... ok
+test layer_read::tests::test_adjacent_and_arbitrarily_ordered_tensors_coalesce ... ok
+test layer_read::tests::test_large_gap_and_max_span_remain_separate ... ok
+test layer_read::tests::test_reusable_buffer_requires_multiple_fully_grouped_ranges ... ok
+test layer_read::tests::test_small_gap_is_bounded_overhead_not_logical_data ... ok
+test memory_report::tests::test_memory_report_keeps_managed_memory_separate ... ok
+test memory_report::tests::test_parse_proc_memory_fields ... ok
+test model::tests::test_qwen35_error_reports_capabilities_without_aliasing ... ok
+test model::tests::test_unsupported_architecture_is_rejected ... ok
+test ops::tests::runtime_attention_adapter_uses_reference_gqa_mapping ... ok
+test ops::tests::runtime_rope_adapter_preserves_reference_identity_at_position_zero ... ok
+test orchestration::tests::test_calibration_binding_mismatch_is_not_silently_reused ... ok
+test orchestration::tests::test_compiler_rejection_is_preserved ... ok
+test orchestration::tests::test_compiler_unsupported_gpu_rejection_is_preserved ... ok
+test orchestration::tests::test_legacy_inference_construction_remains_available ... ok
+test orchestration::tests::test_model_inspection_failure_is_preserved ... ok
+test orchestration::tests::test_non_measured_calibration_observations_do_not_block_or_influence_runtime ... ok
+test orchestration::tests::test_orchestration_request_is_minimal_and_calibration_is_optional ... ok
+test orchestration::tests::test_plan_activation_compiles_before_transferring_runtime_source ... ok
+test orchestration::tests::test_planner_rejection_is_preserved ... ok
+test orchestration::tests::test_planning_only_analysis_exposes_real_profiles_without_runtime_state ... ok
+test orchestration::tests::test_required_unsupported_gpu_is_not_downgraded ... ok
+test orchestration::tests::test_runtime_construction_failure_is_preserved ... ok
+test orchestration::tests::test_static_planning_failure_is_preserved ... ok
+test orchestration::tests::test_storage_discovery_failure_is_preserved ... ok
+test orchestration::tests::test_successful_orchestration_uses_matching_calibration ... ok
+test orchestration::tests::test_successful_orchestration_without_calibration_materializes_plan_decisions ... ok
+test persistent::tests::test_persistent_policy_uses_resident_bytes_and_is_overflow_safe ... ok
+test persistent::tests::test_persistent_streamed_output_budget_too_small ... ok
+test persistent::tests::test_persistent_streamed_output_chunked ... ok
+test persistent::tests::test_persistent_streaming_embedding ... ok
+test plan::tests::test_execution_preflight_flags_too_small_layer_lower_bound ... ok
+test plan::tests::test_execution_preflight_matches_runtime_layer_accounting ... ok
+test plan::tests::test_plan_exceeds ... ok
+test plan::tests::test_plan_fits ... ok
+test plan::tests::test_planner_reports_maximum_complete_layer_capacity ... ok
+test plan_compiler::tests::test_cache_capacity_above_static_limit_is_rejected ... ok
+test plan_compiler::tests::test_cache_settings_are_preserved_exactly ... ok
+test plan_compiler::tests::test_excessive_thread_count_is_rejected ... ok
+test plan_compiler::tests::test_grouped_buffer_reuse_requires_current_capability ... ok
+test plan_compiler::tests::test_grouped_buffer_setting_is_preserved_exactly ... ok
+test plan_compiler::tests::test_inconsistent_cache_state_is_rejected ... ok
+test plan_compiler::tests::test_internally_inconsistent_plan_is_rejected ... ok
+test plan_compiler::tests::test_ram_budget_above_available_limit_is_rejected ... ok
+test plan_compiler::tests::test_read_coalescing_requires_current_capability ... ok
+test plan_compiler::tests::test_read_coalescing_setting_is_preserved_exactly ... ok
+test plan_compiler::tests::test_unsupported_gpu_execution_is_rejected ... ok
+test plan_compiler::tests::test_valid_plan_compiles_without_changing_values ... ok
+test plan_compiler::tests::test_zero_ram_budget_is_rejected ... ok
+test plan_compiler::tests::test_zero_thread_count_is_rejected ... ok
+test plan_persistence::tests::test_changed_storage_is_valid_only_when_required_capabilities_remain ... ok
+test plan_persistence::tests::test_cross_machine_load_revalidates_concrete_thread_requirements ... ok
+test plan_persistence::tests::test_gpu_execution_requirement_is_loadable_but_incompatible ... ok
+test plan_persistence::tests::test_hard_compiler_invariant_failure_is_incompatible ... ok
+test plan_persistence::tests::test_invalid_enum_and_state_combinations_are_rejected ... ok
+test plan_persistence::tests::test_malformed_truncated_and_trailing_input_are_rejected ... ok
+test plan_persistence::tests::test_matching_calibration_is_valid_and_stale_calibration_recommends_refresh ... ok
+test plan_persistence::tests::test_missing_calibration_recommends_refresh_when_execution_remains_valid ... ok
+test plan_persistence::tests::test_missing_required_identity_is_rejected ... ok
+test plan_persistence::tests::test_model_fingerprint_mismatch_is_incompatible ... ok
+test plan_persistence::tests::test_persistence_excludes_paths_payloads_and_runtime_state ... ok
+test plan_persistence::tests::test_same_model_machine_and_storage_are_valid ... ok
+test plan_persistence::tests::test_serialized_output_and_file_round_trip_are_deterministic ... ok
+test plan_persistence::tests::test_unsupported_execution_schema_or_ruleset_is_incompatible ... ok
+test plan_persistence::tests::test_unsupported_persistence_schema_is_rejected ... ok
+test plan_persistence::tests::test_valid_plan_round_trip_preserves_relevant_contract ... ok
+test planner::tests::test_advanced_overrides_preserve_explicit_user_constraints ... ok
+test planner::tests::test_calibration_observations_are_measured_facts_not_capabilities ... ok
+test planner::tests::test_deterministic_strategy_and_execution_plan_construction ... ok
+test planner::tests::test_discovered_profile_capabilities_are_independent_from_calibration ... ok
+test planner::tests::test_feasibility_rejects_budget_above_available_ram ... ok
+test planner::tests::test_feasibility_rejects_required_gpu_and_non_executable_model ... ok
+test planner::tests::test_feasibility_rejects_unusable_storage ... ok
+test planner::tests::test_machine_availability_distinguishes_detected_supported_and_usable ... ok
+test planner::tests::test_maximum_performance_respects_explicit_resource_limits ... ok
+test planner::tests::test_non_advanced_profile_rejects_advanced_override ... ok
+test planner::tests::test_observation_aggregation_and_quality_are_mathematical ... ok
+test planner::tests::test_plan_compatibility_states_are_explicit ... ok
+test planner::tests::test_planner_output_compiles_to_concrete_runtime_config ... ok
+test planner::tests::test_preset_policies_are_explicit_and_bounded ... ok
+test planner::tests::test_profile_construction_and_model_distribution_are_deterministic ... ok
+test planner::tests::test_qwen35_profile_remains_inspect_plan_only ... ok
+test planner::tests::test_storage_file_size_must_match_model_profile ... ok
+test planner::tests::test_unknown_discovery_facts_do_not_create_false_capabilities ... ok
+test profile::tests::test_profiler_disabled_is_noop_and_enabled_counts ... ok
+test residency::tests::test_residency_tracking ... ok
+test runtime_config::tests::test_runtime_config_construction_preserves_explicit_values ... ok
+test runtime_config::tests::test_runtime_config_current_defaults_match_legacy_policies ... ok
+test runtime_config::tests::test_runtime_config_preserves_independent_io_permissions ... ok
+test runtime_config::tests::test_runtime_config_rejects_inconsistent_cache_state ... ok
+test runtime_config::tests::test_runtime_config_rejects_zero_execution_limits ... ok
+test sampling::tests::test_greedy ... ok
+test sampling::tests::test_temperature_sampling ... ok
+test sampling::tests::test_temperature_zero_greedy ... ok
+test sampling::tests::test_top_k ... ok
+test simd::tests::test_dot_scalar_vs_simd ... ok
+test simd::tests::test_matvec_scalar_vs_simd ... ok
+test streaming_model::quantized_matvec_bench ... ignored
+test streaming_model::tests::test_configured_cache_above_runtime_maximum_rolls_back_startup_charges ... ok
+test streaming_model::tests::test_direct_f32_layer_short_read_releases_all_charges ... ok
+test streaming_model::tests::test_f16_bf16_persistent_and_layer_accounting ... ok
+test streaming_model::tests::test_failed_layer_load_preserves_existing_cache_and_accounting ... ok
+test streaming_model::tests::test_final_hidden_is_caller_owned_for_full_charged_lifetime ... ok
+test streaming_model::tests::test_grouped_bf16_does_not_profile_quantized_copy ... ok
+test streaming_model::tests::test_grouped_f16_does_not_profile_quantized_copy ... ok
+test streaming_model::tests::test_grouped_f32_does_not_profile_quantized_copy ... ok
+test streaming_model::tests::test_grouped_quantized_copy_profiles_multiple_payloads_exactly ... ok
+test streaming_model::tests::test_grouped_quantized_copy_profiles_one_exact_payload ... ok
+test streaming_model::tests::test_grouped_quantized_copy_profiling_disabled_is_noop ... ok
+test streaming_model::tests::test_individual_quantized_load_does_not_profile_grouped_copy ... ok
+test streaming_model::tests::test_layer_grouping_and_streaming ... ok
+test streaming_model::tests::test_layer_load_failure_cleans_budget ... ok
+test streaming_model::tests::test_layer_load_reuses_one_buffer_across_grouped_ranges ... ok
+test streaming_model::tests::test_out_of_core_model_larger_than_budget ... ok
+test streaming_model::tests::test_persistent_bf16_transient_and_settled_accounting ... ok
+test streaming_model::tests::test_persistent_f16_transient_and_settled_accounting ... ok
+test streaming_model::tests::test_persistent_f32_direct_load_uses_one_owned_representation ... ok
+test streaming_model::tests::test_persistent_f32_view_borrows_resident_and_owns_streamed_storage ... ok
+test streaming_model::tests::test_persistent_load_failure_rolls_back_all_startup_charges ... ok
+test streaming_model::tests::test_persistent_policy_uses_decoded_resident_size ... ok
+test streaming_model::tests::test_persistent_quantized_stays_compact ... ok
+test streaming_model::tests::test_q4_0_matvec_counters_are_recorded_without_affecting_result ... ok
+test streaming_model::tests::test_q4_0_parallel_matvec_matches_scalar_at_qwen2_5_q_shape ... ok
+test streaming_model::tests::test_q6_k_parallel_matvec_matches_scalar_at_row_partition_boundaries ... ok
+test streaming_model::tests::test_qkv_bias_layer_loading_and_accounting ... ok
+test streaming_model::tests::test_qkv_bias_partial_set_rejected ... ok
+test streaming_model::tests::test_qkv_bias_shape_mismatch_rejected ... ok
+test streaming_model::tests::test_quantized_cache_hit_does_not_repeat_grouped_copy ... ok
+test streaming_model::tests::test_quantized_layer_loading ... ok
+test streaming_model::tests::test_reusable_buffer_peak_falls_back_to_per_range_buffers ... ok
+test streaming_model::tests::test_runtime_config_can_disable_grouped_buffer_reuse_without_disabling_coalescing ... ok
+test streaming_model::tests::test_tensor_f32_view_borrows_float_storage_and_owns_quantized_fallback ... ok
+test support::tests::test_mistral_requires_llama_compatible_gguf_declaration ... ok
+test support::tests::test_quantization_registry_matches_runtime_types ... ok
+test support::tests::test_qwen35_is_inspectable_but_not_runnable ... ok
+test support::tests::test_supported_execution_architectures ... ok
+
+test result: ok. 206 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/execution_devices.rs (/home/neon/Documents/CODE LOCAL/forge/target/debug/deps/execution_devices-bbd4d88a50d217da)
+
+running 1 test
+test native_device_registry_is_optional_and_cpu_safe ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/forgecore_adapter.rs (/home/neon/Documents/CODE LOCAL/forge/target/debug/deps/forgecore_adapter-7a18178b5508e150)
+
+running 5 tests
+test forgecore_adapter_translates_model_batch_and_decode_errors ... gguf_init_from_file: failed to open GGUF file '/definitely/not/a/model.gguf' (No such file or directory)
+llama_model_load: error loading model: llama_model_loader: failed to load model from /definitely/not/a/model.gguf
+llama_model_load_from_file_impl: failed to load model
+ok
+test forgecore_batch_decode_returns_owned_logits_for_last_position ... ok
+test forgecore_boundary_keeps_native_ffi_out_of_ramforge ... ok
+test forgecore_model_and_context_use_native_metadata ... ok
+test forgecore_selection_errors_are_propagated_without_fallback ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests ramforge_cli
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests ramforge_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests ramforge_runtime
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

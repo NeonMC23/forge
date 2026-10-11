@@ -1,0 +1,49 @@
+    Updating git repository `https://github.com/NeonMC23/forgeCORE.git`
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling libc v0.2.189
+   Compiling cfg-if v1.0.4
+   Compiling zerocopy v0.8.56
+   Compiling crossbeam-utils v0.8.22
+   Compiling crossbeam-epoch v0.9.20
+   Compiling crossbeam-deque v0.8.7
+   Compiling thiserror v1.0.69
+   Compiling forge-sys v0.1.0 (https://github.com/NeonMC23/forgeCORE.git?rev=d3203099a315db134193404e79ba2581d9fc53ab#d3203099)
+   Compiling rayon-core v1.13.0
+   Compiling getrandom v0.4.3
+   Compiling rustix v1.1.4
+   Compiling forge-core v0.1.0 (https://github.com/NeonMC23/forgeCORE.git?rev=d3203099a315db134193404e79ba2581d9fc53ab#d3203099)
+   Compiling linux-raw-sys v0.12.1
+   Compiling bitflags v2.13.1
+   Compiling either v1.18.0
+   Compiling fastrand v2.5.0
+   Compiling once_cell v1.21.4
+   Compiling syn v2.0.119
+   Compiling rayon v1.12.0
+   Compiling getrandom v0.2.17
+   Compiling rand_core v0.6.4
+   Compiling tempfile v3.27.0
+   Compiling zerocopy-derive v0.8.56
+   Compiling thiserror-impl v1.0.69
+   Compiling ramforge-core v0.1.0 (/home/neon/Documents/CODE LOCAL/forge/RAMforge/crates/ramforge-core)
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling rand_chacha v0.3.1
+   Compiling rand v0.8.7
+   Compiling ramforge-runtime v0.1.0 (/home/neon/Documents/CODE LOCAL/forge/RAMforge/crates/ramforge-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.77s
+     Running tests/forgecore_adapter.rs (/home/neon/Documents/CODE LOCAL/forge/target/debug/deps/forgecore_adapter-8d6b46070ef2fa43)
+
+running 5 tests
+test forgecore_adapter_translates_model_batch_and_decode_errors ... gguf_init_from_file: failed to open GGUF file '/definitely/not/a/model.gguf' (No such file or directory)
+llama_model_load: error loading model: llama_model_loader: failed to load model from /definitely/not/a/model.gguf
+llama_model_load_from_file_impl: failed to load model
+ok
+test forgecore_batch_decode_returns_owned_logits_for_last_position ... ok
+test forgecore_boundary_keeps_native_ffi_out_of_ramforge ... ok
+test forgecore_model_and_context_use_native_metadata ... ok
+test forgecore_selection_errors_are_propagated_without_fallback ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
