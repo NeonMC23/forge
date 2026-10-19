@@ -1,0 +1,449 @@
+//! Lightweight optional generation profiler using only `std`.
+
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ProfileEvent {
+    Prompt,
+    LayerLoad,
+    LayerCompute,
+    LayerRelease,
+    TensorConstruction,
+    Dequantization,
+    FloatMatvec,
+    QuantizedMatvec,
+    Allocation,
+    Logits,
+    Sampling,
+    Output,
+    TokenLatency,
+    Total,
+}
+
+#[derive(Debug, Default)]
+struct ProfileCounters {
+    enabled: AtomicBool,
+    prompt_ns: AtomicU64,
+    layer_load_ns: AtomicU64,
+    layer_compute_ns: AtomicU64,
+    layer_release_ns: AtomicU64,
+    tensor_construction_ns: AtomicU64,
+    grouped_quantized_copy_ns: AtomicU64,
+    grouped_quantized_copy_count: AtomicU64,
+    grouped_quantized_copy_bytes: AtomicU64,
+    dequantization_ns: AtomicU64,
+    float_matvec_ns: AtomicU64,
+    quantized_matvec_ns: AtomicU64,
+    allocation_ns: AtomicU64,
+    logits_ns: AtomicU64,
+    sampling_ns: AtomicU64,
+    output_ns: AtomicU64,
+    token_latency_ns: AtomicU64,
+    max_token_latency_ns: AtomicU64,
+    total_ns: AtomicU64,
+    tokens: AtomicU64,
+    prompt_forwards: AtomicU64,
+    decode_forwards: AtomicU64,
+    terminal_forwards_skipped: AtomicU64,
+    layer_loads: AtomicU64,
+    layer_releases: AtomicU64,
+    cache_hits: AtomicU64,
+    cache_misses: AtomicU64,
+    cache_evictions: AtomicU64,
+    cached_layer_count: AtomicU64,
+    peak_cached_layer_count: AtomicU64,
+    cache_bytes: AtomicU64,
+    peak_cache_bytes: AtomicU64,
+    // Q4_0 matvec workload counters.
+    q4_0_matvec_calls: AtomicU64,
+    q4_0_matvec_rows: AtomicU64,
+    q4_0_matvec_input_elements: AtomicU64,
+    q4_0_matvec_blocks: AtomicU64,
+    q4_0_matvec_weight_bytes: AtomicU64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Profiler {
+    counters: Arc<ProfileCounters>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ProfileSnapshot {
+    pub prompt: Duration,
+    pub layer_load: Duration,
+    pub layer_compute: Duration,
+    pub layer_release: Duration,
+    pub tensor_construction: Duration,
+    pub grouped_quantized_copy_time: Duration,
+    pub grouped_quantized_copy_count: u64,
+    pub grouped_quantized_copy_bytes: u64,
+    pub dequantization: Duration,
+    pub float_matvec: Duration,
+    pub quantized_matvec: Duration,
+    pub allocation: Duration,
+    pub logits: Duration,
+    pub sampling: Duration,
+    pub output: Duration,
+    pub token_latency_total: Duration,
+    pub max_token_latency: Duration,
+    pub total: Duration,
+    pub tokens: u64,
+    pub prompt_forwards: u64,
+    pub decode_forwards: u64,
+    pub terminal_forwards_skipped: u64,
+    pub layer_loads: u64,
+    pub layer_releases: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub cache_evictions: u64,
+    pub cached_layer_count: u64,
+    pub peak_cached_layer_count: u64,
+    pub cache_bytes: u64,
+    pub peak_cache_bytes: u64,
+    /// Number of distinct Q4_0 matrix-vector calls issued.
+    pub q4_0_matvec_calls: u64,
+    /// Total output rows (out_dim) across all Q4_0 matvec calls.
+    pub q4_0_matvec_rows: u64,
+    /// Total input elements (in_dim summed across all calls).
+    pub q4_0_matvec_input_elements: u64,
+    /// Total Q4_0 blocks processed.
+    pub q4_0_matvec_blocks: u64,
+    /// Total weight bytes read for Q4_0 matvec work (each row is visited once per call).
+    pub q4_0_matvec_weight_bytes: u64,
+}
+
+impl Profiler {
+    pub(crate) fn set_enabled(&self, enabled: bool) {
+        self.counters.enabled.store(enabled, Ordering::Relaxed);
+    }
+
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.counters.enabled.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn reset(&self) {
+        for counter in [
+            &self.counters.prompt_ns,
+            &self.counters.layer_load_ns,
+            &self.counters.layer_compute_ns,
+            &self.counters.layer_release_ns,
+            &self.counters.tensor_construction_ns,
+            &self.counters.grouped_quantized_copy_ns,
+            &self.counters.grouped_quantized_copy_count,
+            &self.counters.grouped_quantized_copy_bytes,
+            &self.counters.dequantization_ns,
+            &self.counters.float_matvec_ns,
+            &self.counters.quantized_matvec_ns,
+            &self.counters.allocation_ns,
+            &self.counters.logits_ns,
+            &self.counters.sampling_ns,
+            &self.counters.output_ns,
+            &self.counters.token_latency_ns,
+            &self.counters.max_token_latency_ns,
+            &self.counters.total_ns,
+            &self.counters.tokens,
+            &self.counters.prompt_forwards,
+            &self.counters.decode_forwards,
+            &self.counters.terminal_forwards_skipped,
+            &self.counters.layer_loads,
+            &self.counters.layer_releases,
+            &self.counters.cache_hits,
+            &self.counters.cache_misses,
+            &self.counters.cache_evictions,
+            &self.counters.cached_layer_count,
+            &self.counters.peak_cached_layer_count,
+            &self.counters.cache_bytes,
+            &self.counters.peak_cache_bytes,
+            &self.counters.q4_0_matvec_calls,
+            &self.counters.q4_0_matvec_rows,
+            &self.counters.q4_0_matvec_input_elements,
+            &self.counters.q4_0_matvec_blocks,
+            &self.counters.q4_0_matvec_weight_bytes,
+        ] {
+            counter.store(0, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn start(&self) -> Option<Instant> {
+        self.is_enabled().then(Instant::now)
+    }
+
+    pub(crate) fn record_since(&self, event: ProfileEvent, started: Option<Instant>) {
+        if let Some(started) = started {
+            self.record(event, started.elapsed());
+        }
+    }
+
+    pub(crate) fn record(&self, event: ProfileEvent, elapsed: Duration) {
+        if !self.is_enabled() {
+            return;
+        }
+        let nanos = elapsed.as_nanos().min(u64::MAX as u128) as u64;
+        let target = match event {
+            ProfileEvent::Prompt => &self.counters.prompt_ns,
+            ProfileEvent::LayerLoad => &self.counters.layer_load_ns,
+            ProfileEvent::LayerCompute => &self.counters.layer_compute_ns,
+            ProfileEvent::LayerRelease => &self.counters.layer_release_ns,
+            ProfileEvent::TensorConstruction => &self.counters.tensor_construction_ns,
+            ProfileEvent::Dequantization => &self.counters.dequantization_ns,
+            ProfileEvent::FloatMatvec => &self.counters.float_matvec_ns,
+            ProfileEvent::QuantizedMatvec => &self.counters.quantized_matvec_ns,
+            ProfileEvent::Allocation => &self.counters.allocation_ns,
+            ProfileEvent::Logits => &self.counters.logits_ns,
+            ProfileEvent::Sampling => &self.counters.sampling_ns,
+            ProfileEvent::Output => &self.counters.output_ns,
+            ProfileEvent::TokenLatency => {
+                update_max(&self.counters.max_token_latency_ns, nanos);
+                &self.counters.token_latency_ns
+            }
+            ProfileEvent::Total => &self.counters.total_ns,
+        };
+        target.fetch_add(nanos, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_grouped_quantized_copy(&self, bytes: u64, elapsed: Duration) {
+        if !self.is_enabled() {
+            return;
+        }
+        let nanos = elapsed.as_nanos().min(u64::MAX as u128) as u64;
+        self.counters
+            .grouped_quantized_copy_ns
+            .fetch_add(nanos, Ordering::Relaxed);
+        self.counters
+            .grouped_quantized_copy_bytes
+            .fetch_add(bytes, Ordering::Relaxed);
+        self.counters
+            .grouped_quantized_copy_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record Q4_0 matvec workload counters. Cheap: one fetch_add per metric per
+    /// invocation, no per-row/per-block logging. Weight bytes is the caller's
+    /// responsibility to compute from the tensor's shape.
+    pub(crate) fn record_q4_0_matvec(
+        &self,
+        rows: u64,
+        input_elements: u64,
+        blocks: u64,
+        weight_bytes: u64,
+    ) {
+        if !self.is_enabled() {
+            return;
+        }
+        self.counters
+            .q4_0_matvec_calls
+            .fetch_add(1, Ordering::Relaxed);
+        self.counters
+            .q4_0_matvec_rows
+            .fetch_add(rows, Ordering::Relaxed);
+        self.counters
+            .q4_0_matvec_input_elements
+            .fetch_add(input_elements, Ordering::Relaxed);
+        self.counters
+            .q4_0_matvec_blocks
+            .fetch_add(blocks, Ordering::Relaxed);
+        self.counters
+            .q4_0_matvec_weight_bytes
+            .fetch_add(weight_bytes, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_token(&self) {
+        if self.is_enabled() {
+            self.counters.tokens.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn record_prompt_forward(&self) {
+        if self.is_enabled() {
+            self.counters
+                .prompt_forwards
+                .fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn record_decode_forward(&self) {
+        if self.is_enabled() {
+            self.counters
+                .decode_forwards
+                .fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn record_terminal_forward_skipped(&self) {
+        if self.is_enabled() {
+            self.counters
+                .terminal_forwards_skipped
+                .fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn record_layer_load(&self) {
+        if self.is_enabled() {
+            self.counters.layer_loads.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn record_cache_hit(&self) {
+        if self.is_enabled() {
+            self.counters.cache_hits.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn record_cache_miss(&self) {
+        if self.is_enabled() {
+            self.counters.cache_misses.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn record_cache_evictions(&self, count: usize) {
+        if self.is_enabled() && count > 0 {
+            self.counters
+                .cache_evictions
+                .fetch_add(count as u64, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn record_cache_state(&self, entries: usize, bytes: u64) {
+        if !self.is_enabled() {
+            return;
+        }
+        let entries = entries as u64;
+        self.counters
+            .cached_layer_count
+            .store(entries, Ordering::Relaxed);
+        self.counters.cache_bytes.store(bytes, Ordering::Relaxed);
+        update_max(&self.counters.peak_cached_layer_count, entries);
+        update_max(&self.counters.peak_cache_bytes, bytes);
+    }
+
+    pub(crate) fn record_layer_release(&self) {
+        if self.is_enabled() {
+            self.counters.layer_releases.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn snapshot(&self) -> ProfileSnapshot {
+        let load = |counter: &AtomicU64| Duration::from_nanos(counter.load(Ordering::Relaxed));
+        ProfileSnapshot {
+            prompt: load(&self.counters.prompt_ns),
+            layer_load: load(&self.counters.layer_load_ns),
+            layer_compute: load(&self.counters.layer_compute_ns),
+            layer_release: load(&self.counters.layer_release_ns),
+            tensor_construction: load(&self.counters.tensor_construction_ns),
+            grouped_quantized_copy_time: load(&self.counters.grouped_quantized_copy_ns),
+            grouped_quantized_copy_count: self
+                .counters
+                .grouped_quantized_copy_count
+                .load(Ordering::Relaxed),
+            grouped_quantized_copy_bytes: self
+                .counters
+                .grouped_quantized_copy_bytes
+                .load(Ordering::Relaxed),
+            dequantization: load(&self.counters.dequantization_ns),
+            float_matvec: load(&self.counters.float_matvec_ns),
+            quantized_matvec: load(&self.counters.quantized_matvec_ns),
+            allocation: load(&self.counters.allocation_ns),
+            logits: load(&self.counters.logits_ns),
+            sampling: load(&self.counters.sampling_ns),
+            output: load(&self.counters.output_ns),
+            token_latency_total: load(&self.counters.token_latency_ns),
+            max_token_latency: load(&self.counters.max_token_latency_ns),
+            total: load(&self.counters.total_ns),
+            tokens: self.counters.tokens.load(Ordering::Relaxed),
+            prompt_forwards: self.counters.prompt_forwards.load(Ordering::Relaxed),
+            decode_forwards: self.counters.decode_forwards.load(Ordering::Relaxed),
+            terminal_forwards_skipped: self
+                .counters
+                .terminal_forwards_skipped
+                .load(Ordering::Relaxed),
+            layer_loads: self.counters.layer_loads.load(Ordering::Relaxed),
+            layer_releases: self.counters.layer_releases.load(Ordering::Relaxed),
+            cache_hits: self.counters.cache_hits.load(Ordering::Relaxed),
+            cache_misses: self.counters.cache_misses.load(Ordering::Relaxed),
+            cache_evictions: self.counters.cache_evictions.load(Ordering::Relaxed),
+            cached_layer_count: self.counters.cached_layer_count.load(Ordering::Relaxed),
+            peak_cached_layer_count: self
+                .counters
+                .peak_cached_layer_count
+                .load(Ordering::Relaxed),
+            cache_bytes: self.counters.cache_bytes.load(Ordering::Relaxed),
+            peak_cache_bytes: self.counters.peak_cache_bytes.load(Ordering::Relaxed),
+            q4_0_matvec_calls: self.counters.q4_0_matvec_calls.load(Ordering::Relaxed),
+            q4_0_matvec_rows: self.counters.q4_0_matvec_rows.load(Ordering::Relaxed),
+            q4_0_matvec_input_elements: self
+                .counters
+                .q4_0_matvec_input_elements
+                .load(Ordering::Relaxed),
+            q4_0_matvec_blocks: self.counters.q4_0_matvec_blocks.load(Ordering::Relaxed),
+            q4_0_matvec_weight_bytes: self
+                .counters
+                .q4_0_matvec_weight_bytes
+                .load(Ordering::Relaxed),
+        }
+    }
+}
+
+fn update_max(counter: &AtomicU64, value: u64) {
+    let mut current = counter.load(Ordering::Relaxed);
+    while value > current {
+        match counter.compare_exchange_weak(current, value, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => break,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_profiler_disabled_is_noop_and_enabled_counts() {
+        let profiler = Profiler::default();
+        profiler.record(ProfileEvent::LayerLoad, Duration::from_millis(5));
+        profiler.record_grouped_quantized_copy(144, Duration::from_millis(3));
+        assert_eq!(profiler.snapshot(), ProfileSnapshot::default());
+
+        profiler.set_enabled(true);
+        profiler.reset();
+        profiler.record(ProfileEvent::LayerLoad, Duration::from_millis(5));
+        profiler.record(ProfileEvent::TokenLatency, Duration::from_millis(7));
+        profiler.record_grouped_quantized_copy(144, Duration::from_millis(3));
+        profiler.record_token();
+        profiler.record_prompt_forward();
+        profiler.record_decode_forward();
+        profiler.record_terminal_forward_skipped();
+        profiler.record_layer_load();
+        profiler.record_cache_hit();
+        profiler.record_cache_miss();
+        profiler.record_cache_evictions(2);
+        profiler.record_cache_state(3, 400);
+        let snapshot = profiler.snapshot();
+        assert_eq!(snapshot.layer_load, Duration::from_millis(5));
+        assert_eq!(snapshot.token_latency_total, Duration::from_millis(7));
+        assert_eq!(snapshot.max_token_latency, Duration::from_millis(7));
+        assert_eq!(
+            snapshot.grouped_quantized_copy_time,
+            Duration::from_millis(3)
+        );
+        assert_eq!(snapshot.grouped_quantized_copy_count, 1);
+        assert_eq!(snapshot.grouped_quantized_copy_bytes, 144);
+        assert_eq!(snapshot.tokens, 1);
+        assert_eq!(snapshot.prompt_forwards, 1);
+        assert_eq!(snapshot.decode_forwards, 1);
+        assert_eq!(snapshot.terminal_forwards_skipped, 1);
+        assert_eq!(snapshot.layer_loads, 1);
+        assert_eq!(snapshot.cache_hits, 1);
+        assert_eq!(snapshot.cache_misses, 1);
+        assert_eq!(snapshot.cache_evictions, 2);
+        assert_eq!(snapshot.cached_layer_count, 3);
+        assert_eq!(snapshot.peak_cached_layer_count, 3);
+        assert_eq!(snapshot.cache_bytes, 400);
+        assert_eq!(snapshot.peak_cache_bytes, 400);
+
+        profiler.reset();
+        assert_eq!(profiler.snapshot(), ProfileSnapshot::default());
+    }
+}

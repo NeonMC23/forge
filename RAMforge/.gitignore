@@ -1,0 +1,136 @@
+# ============================================================
+# RAMforge .gitignore
+# Source code and intentional project configuration belong in Git.
+# Generated toolchains, caches, registries, models, and local
+# environment files do not.
+# ============================================================
+#
+# Preferred build hygiene: keep Cargo's build/target tree OUTSIDE the
+# repository so this workspace stays source-only. For example:
+#
+#   export CARGO_TARGET_DIR="$HOME/.cache/ramforge-cargo-target"
+#   # or any path outside the repo (e.g. /tmp/cargo-target).
+#
+# Run cargo commands as usual; no target/ will ever appear inside the repo.
+# rust-analyzer honors CARGO_TARGET_DIR, so editor builds also stay out.
+
+# ---------- Rust build artifacts ----------
+# Block any `target/` anywhere in the tree, even if someone accidentally
+# runs cargo without CARGO_TARGET_DIR set.
+/target/
+**/target/
+
+# rustc incremental / debug databases that can leak into src trees
+**/*.rmeta
+**/*.rlib
+**/*.rdata
+**/*.d
+**/*.o
+**/*.a
+**/incremental/
+
+# ---------- Rust toolchain & local Cargo-home artifacts ----------
+# Intentional project configuration under .cargo/ (e.g. .cargo/config.toml
+# or .cargo/config) remains trackable. Everything below is a per-machine
+# cargo/rustup artifact and must never be committed.
+/.cargo/
+!.cargo/config.toml
+!.cargo/config
+.rustup/
+.cargo/bin/
+.cargo/env
+.cargo/registry/
+.cargo/git/
+.cargo/.global-cache
+.cargo/.package-cache
+.cargo/.package-cache-mutate
+
+# Downloaded crate archives
+*.crate
+
+# ---------- Development shell environment files ----------
+# Per-machine shell setup (e.g. rustup env sourcing); not project config.
+.profile
+
+# ---------- Temporary / editor / OS files ----------
+*.tmp
+*.temp
+*.log
+*.bak
+*.orig
+*.rej
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swp
+*.swo
+*.rs.bk
+.idea/
+.vscode/
+*.code-workspace
+*.iml
+*.sublime-workspace
+*.sublime-project
+.emacs.desktop
+.emacs.desktop.lock
+
+# ---------- Model & dataset artifacts (never commit) ----------
+*.gguf
+*.ggml
+*.ggla
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.pb
+*.h5
+*.tflite
+*.mlmodel
+*.msgpack
+*.parquet
+*.arrow
+# RAMforge run/plan export files (user-exported, never source)
+*.rfp
+
+# ---------- Benchmark / profiling / tracing output ----------
+*.profraw
+*.profdata
+perf.data
+perf.data.old
+flamegraph.svg
+flamegraph-*.svg
+bench-*.json
+bench-*.csv
+bench-*.txt
+criterion/
+target-criterion/
+grcov_*.info
+lcov.info
+coverage/
+*.trace
+
+# ---------- Core dumps / crash files ----------
+core
+core.*
+vgcore.*
+*.stackdump
+
+# ---------- Native binaries / shared libraries ----------
+*.exe
+*.dll
+*.so
+*.so.*
+*.dylib
+*.a
+*.lib
+*.pdb
+
+# ---------- Local environment / secrets ----------
+.env
+.env.*
+*.pem
+*.key
+id_*

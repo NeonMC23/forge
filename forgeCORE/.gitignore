@@ -1,0 +1,8 @@
+/target/
+**/target/
+*.gguf
+*.bin
+*~
+*.swp
+*.swo
+.DS_Store

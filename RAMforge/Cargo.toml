@@ -1,0 +1,17 @@
+[workspace]
+members = [
+  "crates/ramforge-core",
+  "crates/ramforge-runtime",
+  "crates/ramforge-cli",
+]
+resolver = "2"
+
+[workspace.dependencies]
+forge-core = { git = "https://github.com/NeonMC23/forgeCORE.git", rev = "d3203099a315db134193404e79ba2581d9fc53ab", package = "forge-core" }
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+
+[patch."https://github.com/NeonMC23/forgeCORE.git"]
+forge-core = { path = "../forgeCORE/crates/forge-core" }

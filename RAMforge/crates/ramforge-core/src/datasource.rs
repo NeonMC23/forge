@@ -1,0 +1,1164 @@
+//! File-backed tensor access
+//!
+//! This module uses parsed tensor descriptors to provide explicit access to
+//! data in the original GGUF file without loading the entire model into RAM.
+
+use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use crate::error::DataSourceError;
+use crate::gguf::parse_gguf_file;
+use crate::model::{GgufModel, TensorDescriptor};
+use crate::types::GgmlType;
+
+/// Optional datasource read-path counters. `elapsed` includes destination
+/// allocation plus synchronized seek/read, not just kernel read syscall time.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IoProfile {
+    /// Physical bytes returned by bounded file reads, including coalesced gaps.
+    pub bytes_read: u64,
+    /// Physical read requests against the retained file handle.
+    pub read_operations: u64,
+    pub read_failures: u64,
+    pub seek_operations: u64,
+    pub seeks_avoided: u64,
+    pub logical_tensor_reads: u64,
+    pub logical_tensor_bytes: u64,
+    pub coalesced_ranges: u64,
+    pub coalesced_gap_bytes: u64,
+    /// Successful reads whose caller-provided capacity already covered the span.
+    pub read_buffer_reuses: u64,
+    /// Successful reads whose destination capacity grew during reservation.
+    pub read_buffer_growths: u64,
+    pub elapsed: Duration,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TensorIoProfile {
+    pub bytes_read: u64,
+    pub read_operations: u64,
+    pub read_failures: u64,
+}
+
+#[derive(Debug)]
+struct FileState {
+    file: File,
+    /// Known absolute cursor position. `None` forces the next read to seek.
+    position: Option<u64>,
+}
+
+/// A file-backed data source for GGUF tensor data
+///
+/// Holds the parsed model (metadata + descriptors) and provides methods to
+/// read tensor payloads on demand. The entire model is never loaded into RAM
+/// at once; only requested tensors or byte ranges are read. A mutex-protected
+/// file handle is reused so repeated tensor reads do not reopen the GGUF.
+#[derive(Debug)]
+pub struct GgufDataSource {
+    model: GgufModel,
+    file: Mutex<FileState>,
+    file_size: u64,
+    profiling_enabled: AtomicBool,
+    profile_bytes_read: AtomicU64,
+    profile_read_operations: AtomicU64,
+    profile_read_failures: AtomicU64,
+    profile_read_nanos: AtomicU64,
+    profile_seek_operations: AtomicU64,
+    profile_seeks_avoided: AtomicU64,
+    profile_logical_tensor_reads: AtomicU64,
+    profile_logical_tensor_bytes: AtomicU64,
+    profile_coalesced_ranges: AtomicU64,
+    profile_coalesced_gap_bytes: AtomicU64,
+    profile_read_buffer_reuses: AtomicU64,
+    profile_read_buffer_growths: AtomicU64,
+    profile_tensors: Mutex<BTreeMap<String, TensorIoProfile>>,
+}
+
+impl GgufDataSource {
+    /// Open a GGUF file as a data source
+    ///
+    /// Parses header, metadata, and tensor descriptors (file-backed), but does
+    /// not load tensor payloads.
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, DataSourceError> {
+        let path_buf = path.as_ref().to_path_buf();
+        let model =
+            parse_gguf_file(&path_buf).map_err(|e| DataSourceError::General(e.to_string()))?;
+        let file_size = model.file_size;
+        let file = File::open(&path_buf)?;
+        Ok(Self {
+            model,
+            file: Mutex::new(FileState {
+                file,
+                position: Some(0),
+            }),
+            file_size,
+            profiling_enabled: AtomicBool::new(false),
+            profile_bytes_read: AtomicU64::new(0),
+            profile_read_operations: AtomicU64::new(0),
+            profile_read_failures: AtomicU64::new(0),
+            profile_read_nanos: AtomicU64::new(0),
+            profile_seek_operations: AtomicU64::new(0),
+            profile_seeks_avoided: AtomicU64::new(0),
+            profile_logical_tensor_reads: AtomicU64::new(0),
+            profile_logical_tensor_bytes: AtomicU64::new(0),
+            profile_coalesced_ranges: AtomicU64::new(0),
+            profile_coalesced_gap_bytes: AtomicU64::new(0),
+            profile_read_buffer_reuses: AtomicU64::new(0),
+            profile_read_buffer_growths: AtomicU64::new(0),
+            profile_tensors: Mutex::new(BTreeMap::new()),
+        })
+    }
+
+    /// Get reference to parsed model
+    pub fn model(&self) -> &GgufModel {
+        &self.model
+    }
+
+    pub fn set_profiling(&self, enabled: bool) {
+        self.profiling_enabled.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn reset_io_profile(&self) {
+        self.profile_bytes_read.store(0, Ordering::Relaxed);
+        self.profile_read_operations.store(0, Ordering::Relaxed);
+        self.profile_read_failures.store(0, Ordering::Relaxed);
+        self.profile_read_nanos.store(0, Ordering::Relaxed);
+        self.profile_seek_operations.store(0, Ordering::Relaxed);
+        self.profile_seeks_avoided.store(0, Ordering::Relaxed);
+        self.profile_logical_tensor_reads
+            .store(0, Ordering::Relaxed);
+        self.profile_logical_tensor_bytes
+            .store(0, Ordering::Relaxed);
+        self.profile_coalesced_ranges.store(0, Ordering::Relaxed);
+        self.profile_coalesced_gap_bytes.store(0, Ordering::Relaxed);
+        self.profile_read_buffer_reuses.store(0, Ordering::Relaxed);
+        self.profile_read_buffer_growths.store(0, Ordering::Relaxed);
+        if let Ok(mut tensors) = self.profile_tensors.lock() {
+            tensors.clear();
+        }
+    }
+
+    pub fn io_profile(&self) -> IoProfile {
+        IoProfile {
+            bytes_read: self.profile_bytes_read.load(Ordering::Relaxed),
+            read_operations: self.profile_read_operations.load(Ordering::Relaxed),
+            read_failures: self.profile_read_failures.load(Ordering::Relaxed),
+            seek_operations: self.profile_seek_operations.load(Ordering::Relaxed),
+            seeks_avoided: self.profile_seeks_avoided.load(Ordering::Relaxed),
+            logical_tensor_reads: self.profile_logical_tensor_reads.load(Ordering::Relaxed),
+            logical_tensor_bytes: self.profile_logical_tensor_bytes.load(Ordering::Relaxed),
+            coalesced_ranges: self.profile_coalesced_ranges.load(Ordering::Relaxed),
+            coalesced_gap_bytes: self.profile_coalesced_gap_bytes.load(Ordering::Relaxed),
+            read_buffer_reuses: self.profile_read_buffer_reuses.load(Ordering::Relaxed),
+            read_buffer_growths: self.profile_read_buffer_growths.load(Ordering::Relaxed),
+            elapsed: Duration::from_nanos(self.profile_read_nanos.load(Ordering::Relaxed)),
+        }
+    }
+
+    pub fn tensor_io_profile(&self) -> BTreeMap<String, TensorIoProfile> {
+        self.profile_tensors
+            .lock()
+            .map(|profiles| profiles.clone())
+            .unwrap_or_default()
+    }
+
+    fn record_tensor_read(&self, name: &str, bytes: u64, failed: bool) {
+        if !self.profiling_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        self.profile_logical_tensor_reads
+            .fetch_add(1, Ordering::Relaxed);
+        self.profile_logical_tensor_bytes
+            .fetch_add(bytes, Ordering::Relaxed);
+        let Ok(mut profiles) = self.profile_tensors.lock() else {
+            return;
+        };
+        let profile = profiles.entry(name.to_string()).or_default();
+        profile.bytes_read = profile.bytes_read.saturating_add(bytes);
+        profile.read_operations = profile.read_operations.saturating_add(1);
+        if failed {
+            profile.read_failures = profile.read_failures.saturating_add(1);
+        }
+    }
+
+    fn record_coalesced_range(&self, gap_bytes: u64) {
+        if !self.profiling_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        self.profile_coalesced_ranges
+            .fetch_add(1, Ordering::Relaxed);
+        self.profile_coalesced_gap_bytes
+            .fetch_add(gap_bytes, Ordering::Relaxed);
+    }
+
+    fn ensure_file_position(
+        &self,
+        state: &mut FileState,
+        file_offset: u64,
+    ) -> Result<(), DataSourceError> {
+        if state.position == Some(file_offset) {
+            if self.profiling_enabled.load(Ordering::Relaxed) {
+                self.profile_seeks_avoided.fetch_add(1, Ordering::Relaxed);
+            }
+            return Ok(());
+        }
+        if self.profiling_enabled.load(Ordering::Relaxed) {
+            self.profile_seek_operations.fetch_add(1, Ordering::Relaxed);
+        }
+        match state.file.seek(SeekFrom::Start(file_offset)) {
+            Ok(position) => {
+                state.position = Some(position);
+                Ok(())
+            }
+            Err(error) => {
+                state.position = None;
+                Err(DataSourceError::Io(error))
+            }
+        }
+    }
+
+    fn profile_start(&self) -> Option<Instant> {
+        self.profiling_enabled
+            .load(Ordering::Relaxed)
+            .then(Instant::now)
+    }
+
+    fn record_read(&self, started: Option<Instant>, bytes: u64, failed: bool) {
+        let Some(started) = started else {
+            return;
+        };
+        self.profile_bytes_read.fetch_add(bytes, Ordering::Relaxed);
+        self.profile_read_operations.fetch_add(1, Ordering::Relaxed);
+        if failed {
+            self.profile_read_failures.fetch_add(1, Ordering::Relaxed);
+        }
+        let nanos = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+        self.profile_read_nanos.fetch_add(nanos, Ordering::Relaxed);
+    }
+
+    /// Get tensor descriptor by name
+    pub fn get_descriptor(&self, name: &str) -> Result<&TensorDescriptor, DataSourceError> {
+        self.model
+            .tensors
+            .iter()
+            .find(|t| t.name == name)
+            .ok_or_else(|| DataSourceError::TensorNotFound(name.to_string()))
+    }
+
+    /// Read full tensor data by descriptor
+    pub fn read_tensor_by_descriptor(
+        &self,
+        desc: &TensorDescriptor,
+    ) -> Result<Vec<u8>, DataSourceError> {
+        let byte_length = desc.byte_length.ok_or_else(|| {
+            DataSourceError::UnknownByteLength(desc.name.clone(), desc.ggml_type.name())
+        })?;
+
+        self.validate_bounds(desc, byte_length)?;
+
+        let result = self.read_range(desc.file_offset, byte_length);
+        let bytes = result.as_ref().map(|_| byte_length).unwrap_or(0);
+        self.record_tensor_read(&desc.name, bytes, result.is_err());
+        result
+    }
+
+    /// Read full tensor data by name
+    pub fn read_tensor(&self, name: &str) -> Result<Vec<u8>, DataSourceError> {
+        let desc = self.get_descriptor(name)?;
+        // Clone descriptor to avoid borrow issues
+        let desc_clone = desc.clone();
+        self.read_tensor_by_descriptor(&desc_clone)
+    }
+
+    /// Read an F32 tensor directly into its final `Vec<f32>` representation.
+    ///
+    /// The destination allocation is not zero-filled and no intermediate raw
+    /// byte vector is created. GGUF little-endian bytes are converted in place
+    /// only on big-endian hosts; little-endian hosts perform no element-wise
+    /// decode pass.
+    pub fn read_f32_tensor_by_descriptor(
+        &self,
+        desc: &TensorDescriptor,
+    ) -> Result<Vec<f32>, DataSourceError> {
+        self.read_f32_tensor_range_by_descriptor(desc, 0, desc.num_elements)
+    }
+
+    /// Read a contiguous element range of an F32 tensor directly into final
+    /// F32 storage. `element_offset` and `element_count` are measured in f32
+    /// elements, not bytes.
+    pub fn read_f32_tensor_range_by_descriptor(
+        &self,
+        desc: &TensorDescriptor,
+        element_offset: u64,
+        element_count: u64,
+    ) -> Result<Vec<f32>, DataSourceError> {
+        if desc.ggml_type != GgmlType::F32 {
+            return Err(DataSourceError::General(format!(
+                "direct F32 read requires F32 tensor '{}', got {}",
+                desc.name,
+                desc.ggml_type.name()
+            )));
+        }
+
+        let byte_length = desc.byte_length.ok_or_else(|| {
+            DataSourceError::UnknownByteLength(desc.name.clone(), desc.ggml_type.name())
+        })?;
+        let expected_byte_length = desc
+            .num_elements
+            .checked_mul(std::mem::size_of::<f32>() as u64)
+            .ok_or_else(|| {
+                DataSourceError::InvalidRange(format!(
+                    "F32 tensor '{}' byte length overflows",
+                    desc.name
+                ))
+            })?;
+        if byte_length != expected_byte_length {
+            return Err(DataSourceError::InvalidRange(format!(
+                "F32 tensor '{}' descriptor length {} does not match {} elements ({} bytes)",
+                desc.name, byte_length, desc.num_elements, expected_byte_length
+            )));
+        }
+
+        let element_end = element_offset.checked_add(element_count).ok_or_else(|| {
+            DataSourceError::InvalidRange(format!(
+                "F32 element range overflow for tensor '{}': {} + {}",
+                desc.name, element_offset, element_count
+            ))
+        })?;
+        if element_end > desc.num_elements {
+            return Err(DataSourceError::InvalidRange(format!(
+                "F32 element range {}..{} exceeds tensor '{}' element count {}",
+                element_offset, element_end, desc.name, desc.num_elements
+            )));
+        }
+
+        let relative_byte_offset = element_offset
+            .checked_mul(std::mem::size_of::<f32>() as u64)
+            .ok_or_else(|| {
+                DataSourceError::InvalidRange(format!(
+                    "F32 byte offset overflow for tensor '{}'",
+                    desc.name
+                ))
+            })?;
+        let range_byte_length = element_count
+            .checked_mul(std::mem::size_of::<f32>() as u64)
+            .ok_or_else(|| {
+                DataSourceError::InvalidRange(format!(
+                    "F32 byte length overflow for tensor '{}'",
+                    desc.name
+                ))
+            })?;
+        let file_offset = desc
+            .file_offset
+            .checked_add(relative_byte_offset)
+            .ok_or_else(|| {
+                DataSourceError::InvalidRange(format!(
+                    "F32 file offset overflow for tensor '{}'",
+                    desc.name
+                ))
+            })?;
+        self.validate_bounds_at(file_offset, range_byte_length, desc)?;
+        let result = self.read_f32_range(file_offset, element_count);
+        let bytes = result.as_ref().map(|_| range_byte_length).unwrap_or(0);
+        self.record_tensor_read(&desc.name, bytes, result.is_err());
+        result
+    }
+
+    /// Read one validated physical range containing explicit tensor requests.
+    /// Tensor boundaries remain descriptor-derived; bytes between requests are
+    /// profiling-visible gap overhead and are never treated as tensor data.
+    pub fn read_coalesced_tensor_range(
+        &self,
+        descriptors: &[&TensorDescriptor],
+        file_offset: u64,
+        byte_length: u64,
+    ) -> Result<Vec<u8>, DataSourceError> {
+        let mut buffer = Vec::new();
+        self.read_coalesced_tensor_range_into(descriptors, file_offset, byte_length, &mut buffer)?;
+        Ok(buffer)
+    }
+
+    /// Variant of `read_coalesced_tensor_range` that reuses caller-owned
+    /// capacity. The caller remains responsible for accounting that capacity.
+    pub fn read_coalesced_tensor_range_into(
+        &self,
+        descriptors: &[&TensorDescriptor],
+        file_offset: u64,
+        byte_length: u64,
+        buffer: &mut Vec<u8>,
+    ) -> Result<(), DataSourceError> {
+        let first = descriptors.first().ok_or_else(|| {
+            DataSourceError::InvalidRange("coalesced tensor read is empty".to_string())
+        })?;
+        let range_end = file_offset.checked_add(byte_length).ok_or_else(|| {
+            DataSourceError::InvalidRange("coalesced tensor range overflows".to_string())
+        })?;
+        self.validate_bounds_at(file_offset, byte_length, first)?;
+
+        let mut logical_bytes = 0u64;
+        for descriptor in descriptors {
+            let tensor_bytes = descriptor.byte_length.ok_or_else(|| {
+                DataSourceError::UnknownByteLength(
+                    descriptor.name.clone(),
+                    descriptor.ggml_type.name(),
+                )
+            })?;
+            self.validate_bounds(descriptor, tensor_bytes)?;
+            let tensor_end = descriptor
+                .file_offset
+                .checked_add(tensor_bytes)
+                .ok_or_else(|| {
+                    DataSourceError::InvalidRange(format!(
+                        "tensor '{}' range overflows",
+                        descriptor.name
+                    ))
+                })?;
+            if descriptor.file_offset < file_offset || tensor_end > range_end {
+                return Err(DataSourceError::InvalidRange(format!(
+                    "tensor '{}' is outside coalesced range {}..{}",
+                    descriptor.name, file_offset, range_end
+                )));
+            }
+            logical_bytes = logical_bytes.checked_add(tensor_bytes).ok_or_else(|| {
+                DataSourceError::InvalidRange(
+                    "coalesced logical tensor byte count overflows".to_string(),
+                )
+            })?;
+        }
+        if logical_bytes > byte_length {
+            return Err(DataSourceError::InvalidRange(
+                "coalesced tensors overlap or exceed the physical range".to_string(),
+            ));
+        }
+
+        let result = self.read_range_into(file_offset, byte_length, buffer);
+        let failed = result.is_err();
+        for descriptor in descriptors {
+            let bytes = if failed {
+                0
+            } else {
+                descriptor.byte_length.unwrap_or(0)
+            };
+            self.record_tensor_read(&descriptor.name, bytes, failed);
+        }
+        if !failed && descriptors.len() > 1 {
+            self.record_coalesced_range(byte_length - logical_bytes);
+        }
+        result
+    }
+
+    /// Read a byte range within a tensor
+    ///
+    /// `offset` and `length` are relative to the start of the tensor data,
+    /// not absolute file offset.
+    pub fn read_tensor_range(
+        &self,
+        name: &str,
+        offset: u64,
+        length: u64,
+    ) -> Result<Vec<u8>, DataSourceError> {
+        let desc = self.get_descriptor(name)?.clone();
+        self.read_tensor_range_by_descriptor(&desc, offset, length)
+    }
+
+    /// Read a byte range within a tensor by descriptor
+    pub fn read_tensor_range_by_descriptor(
+        &self,
+        desc: &TensorDescriptor,
+        offset: u64,
+        length: u64,
+    ) -> Result<Vec<u8>, DataSourceError> {
+        let byte_length = desc.byte_length.ok_or_else(|| {
+            DataSourceError::UnknownByteLength(desc.name.clone(), desc.ggml_type.name())
+        })?;
+
+        // Validate range within tensor
+        if offset > byte_length {
+            return Err(DataSourceError::InvalidRange(format!(
+                "offset {} beyond tensor '{}' length {}",
+                offset, desc.name, byte_length
+            )));
+        }
+        let range_end = offset.checked_add(length).ok_or_else(|| {
+            DataSourceError::InvalidRange(format!(
+                "range offset {} + length {} overflows for tensor '{}'",
+                offset, length, desc.name
+            ))
+        })?;
+        if range_end > byte_length {
+            return Err(DataSourceError::InvalidRange(format!(
+                "range offset {} + length {} exceeds tensor '{}' length {}",
+                offset, length, desc.name, byte_length
+            )));
+        }
+
+        let file_offset = desc.file_offset.checked_add(offset).ok_or_else(|| {
+            DataSourceError::InvalidRange(format!(
+                "file offset overflow for tensor '{}': {} + {}",
+                desc.name, desc.file_offset, offset
+            ))
+        })?;
+        self.validate_bounds_at(file_offset, length, desc)?;
+
+        let result = self.read_range(file_offset, length);
+        let bytes = result.as_ref().map(|_| length).unwrap_or(0);
+        self.record_tensor_read(&desc.name, bytes, result.is_err());
+        result
+    }
+
+    fn validate_bounds(
+        &self,
+        desc: &TensorDescriptor,
+        byte_length: u64,
+    ) -> Result<(), DataSourceError> {
+        self.validate_bounds_at(desc.file_offset, byte_length, desc)
+    }
+
+    fn validate_bounds_at(
+        &self,
+        file_offset: u64,
+        length: u64,
+        desc: &TensorDescriptor,
+    ) -> Result<(), DataSourceError> {
+        if file_offset < self.model.data_start_offset {
+            return Err(DataSourceError::InvalidOffset(format!(
+                "tensor '{}' file_offset {} is before data_start {}",
+                desc.name, file_offset, self.model.data_start_offset
+            )));
+        }
+        let end = file_offset.checked_add(length).ok_or_else(|| {
+            DataSourceError::InvalidRange(format!(
+                "file range overflow for tensor '{}': {} + {}",
+                desc.name, file_offset, length
+            ))
+        })?;
+        if end > self.file_size {
+            return Err(DataSourceError::OutOfBounds {
+                name: desc.name.clone(),
+                file_offset,
+                byte_length: length,
+                file_size: self.file_size,
+            });
+        }
+        Ok(())
+    }
+
+    fn read_range(&self, file_offset: u64, length: u64) -> Result<Vec<u8>, DataSourceError> {
+        let mut buffer = Vec::new();
+        self.read_range_into(file_offset, length, &mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn read_range_into(
+        &self,
+        file_offset: u64,
+        length: u64,
+        buffer: &mut Vec<u8>,
+    ) -> Result<(), DataSourceError> {
+        let started = self.profile_start();
+        let capacity_before = buffer.capacity();
+        let result: Result<(), DataSourceError> = (|| {
+            let length_usize = usize::try_from(length).map_err(|_| {
+                DataSourceError::InvalidRange(format!(
+                    "requested byte range length {} does not fit this platform",
+                    length
+                ))
+            })?;
+            buffer.clear();
+            buffer.try_reserve_exact(length_usize).map_err(|e| {
+                DataSourceError::General(format!(
+                    "failed to reserve {}-byte read buffer: {}",
+                    length_usize, e
+                ))
+            })?;
+
+            let mut state = self.file.lock().map_err(|_| {
+                DataSourceError::General("GGUF file handle lock poisoned".to_string())
+            })?;
+            self.ensure_file_position(&mut state, file_offset)?;
+            let read_result = {
+                let mut limited = (&mut state.file).take(length);
+                limited.read_to_end(buffer)
+            };
+            if let Err(error) = read_result {
+                state.position = None;
+                return Err(DataSourceError::Io(error));
+            }
+            if buffer.len() != length_usize {
+                state.position = None;
+                return Err(DataSourceError::Io(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "failed to fill whole buffer",
+                )));
+            }
+            let next_position = file_offset.checked_add(length).ok_or_else(|| {
+                DataSourceError::InvalidRange(format!(
+                    "file position overflow after reading offset {} length {}",
+                    file_offset, length
+                ))
+            })?;
+            state.position = Some(next_position);
+            Ok(())
+        })();
+        let bytes = if result.is_ok() { length } else { 0 };
+        if result.is_ok() && self.profiling_enabled.load(Ordering::Relaxed) {
+            if usize::try_from(length)
+                .ok()
+                .is_some_and(|required| required > 0 && capacity_before >= required)
+            {
+                self.profile_read_buffer_reuses
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            if buffer.capacity() > capacity_before {
+                self.profile_read_buffer_growths
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        self.record_read(started, bytes, result.is_err());
+        result
+    }
+
+    /// Read exact little-endian F32 data into uninitialized final storage.
+    fn read_f32_range(
+        &self,
+        file_offset: u64,
+        element_count: u64,
+    ) -> Result<Vec<f32>, DataSourceError> {
+        let started = self.profile_start();
+        let profiled_result = self
+            .read_f32_range_unprofiled(file_offset, element_count)
+            .and_then(|values| {
+                element_count
+                    .checked_mul(std::mem::size_of::<f32>() as u64)
+                    .ok_or_else(|| {
+                        DataSourceError::InvalidRange(format!(
+                            "F32 read size overflows for {} elements",
+                            element_count
+                        ))
+                    })
+                    .map(|bytes| (values, bytes))
+            });
+        let (result, bytes) = match profiled_result {
+            Ok((values, bytes)) => (Ok(values), bytes),
+            Err(error) => (Err(error), 0),
+        };
+        self.record_read(started, bytes, result.is_err());
+        result
+    }
+
+    fn read_f32_range_unprofiled(
+        &self,
+        file_offset: u64,
+        element_count: u64,
+    ) -> Result<Vec<f32>, DataSourceError> {
+        let element_count = usize::try_from(element_count).map_err(|_| {
+            DataSourceError::InvalidRange(format!(
+                "F32 element count {} does not fit this platform",
+                element_count
+            ))
+        })?;
+        let byte_length = element_count
+            .checked_mul(std::mem::size_of::<f32>())
+            .ok_or_else(|| {
+                DataSourceError::InvalidRange(format!(
+                    "F32 read size overflows for {} elements",
+                    element_count
+                ))
+            })?;
+        let byte_length_u64 = u64::try_from(byte_length).map_err(|_| {
+            DataSourceError::InvalidRange("F32 read byte length exceeds u64".to_string())
+        })?;
+        let next_position = file_offset.checked_add(byte_length_u64).ok_or_else(|| {
+            DataSourceError::InvalidRange(format!(
+                "F32 file position overflow after offset {} and length {}",
+                file_offset, byte_length_u64
+            ))
+        })?;
+        if element_count == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut values = Vec::<f32>::new();
+        values.try_reserve_exact(element_count).map_err(|e| {
+            DataSourceError::General(format!(
+                "failed to reserve {}-element F32 read buffer: {}",
+                element_count, e
+            ))
+        })?;
+
+        let mut state = self
+            .file
+            .lock()
+            .map_err(|_| DataSourceError::General("GGUF file handle lock poisoned".to_string()))?;
+        self.ensure_file_position(&mut state, file_offset)?;
+        let read_result = {
+            let spare = &mut values.spare_capacity_mut()[..element_count];
+            // SAFETY:
+            // - `spare` refers to `element_count` properly aligned f32 slots;
+            // - their total size is exactly `byte_length` bytes;
+            // - the vector length remains zero while `read_exact` runs, so an
+            //   error drops no partially initialized f32 values;
+            // - every possible 32-bit pattern is a valid Rust f32 value;
+            // - on success every byte is initialized before `set_len` below.
+            let destination = unsafe {
+                std::slice::from_raw_parts_mut(spare.as_mut_ptr().cast::<u8>(), byte_length)
+            };
+            state.file.read_exact(destination)
+        };
+        if let Err(error) = read_result {
+            state.position = None;
+            return Err(DataSourceError::Io(error));
+        }
+        state.position = Some(next_position);
+
+        // SAFETY: `read_exact` above initialized every byte of every reserved
+        // f32 slot, and all f32 bit patterns are valid.
+        unsafe {
+            values.set_len(element_count);
+        }
+
+        // GGUF is little-endian. The direct byte load already has native F32
+        // layout on little-endian hosts; big-endian hosts normalize in place.
+        #[cfg(target_endian = "big")]
+        for value in &mut values {
+            *value = f32::from_bits(u32::from_le(value.to_bits()));
+        }
+
+        Ok(values)
+    }
+
+    /// List all tensor names
+    pub fn tensor_names(&self) -> Vec<String> {
+        self.model.tensors.iter().map(|t| t.name.clone()).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::align_offset;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn write_string<W: Write>(w: &mut W, s: &str) {
+        let bytes = s.as_bytes();
+        w.write_all(&(bytes.len() as u64).to_le_bytes()).unwrap();
+        w.write_all(bytes).unwrap();
+    }
+
+    fn write_u32<W: Write>(w: &mut W, v: u32) {
+        w.write_all(&v.to_le_bytes()).unwrap();
+    }
+
+    fn write_u64<W: Write>(w: &mut W, v: u64) {
+        w.write_all(&v.to_le_bytes()).unwrap();
+    }
+
+    fn create_single_f32_gguf(dims: &[u64], bits: &[u32]) -> NamedTempFile {
+        assert_eq!(dims.iter().product::<u64>(), bits.len() as u64);
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GGUF");
+        write_u32(&mut buf, 3);
+        write_u64(&mut buf, 1); // tensor count
+        write_u64(&mut buf, 0); // metadata count
+        write_string(&mut buf, "test.weight");
+        write_u32(&mut buf, dims.len() as u32);
+        for &dim in dims {
+            write_u64(&mut buf, dim);
+        }
+        write_u32(&mut buf, 0); // F32
+        write_u64(&mut buf, 0);
+        let pos = buf.len() as u64;
+        let aligned = align_offset(pos, 32);
+        buf.extend(vec![0u8; (aligned - pos) as usize]);
+        for &value_bits in bits {
+            buf.extend_from_slice(&value_bits.to_le_bytes());
+        }
+
+        let mut tmp = NamedTempFile::new().unwrap();
+        tmp.write_all(&buf).unwrap();
+        tmp.flush().unwrap();
+        tmp
+    }
+
+    fn create_test_gguf_with_gap(gap: usize) -> NamedTempFile {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GGUF");
+        write_u32(&mut buf, 3);
+        write_u64(&mut buf, 2);
+        write_u64(&mut buf, 0);
+        for (name, offset) in [("a.weight", 0u64), ("b.weight", 8 + gap as u64)] {
+            write_string(&mut buf, name);
+            write_u32(&mut buf, 1);
+            write_u64(&mut buf, 2);
+            write_u32(&mut buf, 0);
+            write_u64(&mut buf, offset);
+        }
+        let pos = buf.len() as u64;
+        let aligned = align_offset(pos, 32);
+        buf.extend(vec![0u8; (aligned - pos) as usize]);
+        for value in [1.0f32, 2.0] {
+            buf.extend_from_slice(&value.to_le_bytes());
+        }
+        buf.extend(vec![0xA5; gap]);
+        for value in [3.0f32, 4.0] {
+            buf.extend_from_slice(&value.to_le_bytes());
+        }
+        let mut tmp = NamedTempFile::new().unwrap();
+        tmp.write_all(&buf).unwrap();
+        tmp.flush().unwrap();
+        tmp
+    }
+
+    fn create_test_gguf_with_data() -> NamedTempFile {
+        let mut buf = Vec::new();
+        // magic
+        buf.extend_from_slice(b"GGUF");
+        write_u32(&mut buf, 3);
+        write_u64(&mut buf, 2); // tensor count
+        write_u64(&mut buf, 1); // kv count
+        write_string(&mut buf, "general.architecture");
+        write_u32(&mut buf, 8);
+        write_string(&mut buf, "llama");
+
+        // tensor 1: a.weight, 4 elements F32
+        write_string(&mut buf, "a.weight");
+        write_u32(&mut buf, 1);
+        write_u64(&mut buf, 4);
+        write_u32(&mut buf, 0); // F32
+        write_u64(&mut buf, 0); // offset 0
+
+        // tensor 2: b.weight, 8 elements F32
+        write_string(&mut buf, "b.weight");
+        write_u32(&mut buf, 1);
+        write_u64(&mut buf, 8);
+        write_u32(&mut buf, 0); // F32
+        write_u64(&mut buf, 16); // offset 16 (after first tensor 4*4=16)
+
+        let pos = buf.len() as u64;
+        let aligned = align_offset(pos, 32);
+        let pad = (aligned - pos) as usize;
+        buf.extend(vec![0u8; pad]);
+
+        // tensor data: a = [1.0, 2.0, 3.0, 4.0] f32 LE
+        for v in [1.0f32, 2.0, 3.0, 4.0] {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+        // b = [5.0 .. 12.0]
+        for v in [5.0f32, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0] {
+            buf.extend_from_slice(&v.to_le_bytes());
+        }
+
+        let mut tmp = NamedTempFile::new().unwrap();
+        tmp.write_all(&buf).unwrap();
+        tmp.flush().unwrap();
+        tmp
+    }
+
+    #[test]
+    fn test_valid_tensor_read() {
+        let tmp = create_test_gguf_with_data();
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        assert_eq!(ds.model().tensors.len(), 2);
+        let data = ds.read_tensor("a.weight").unwrap();
+        assert_eq!(data.len(), 16);
+        // Check first float is 1.0
+        let f = f32::from_le_bytes(data[0..4].try_into().unwrap());
+        assert_eq!(f, 1.0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_datasource_reuses_open_handle_after_path_is_removed() {
+        let tmp = create_test_gguf_with_data();
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        drop(tmp);
+        let data = ds.read_tensor("a.weight").unwrap();
+        assert_eq!(data.len(), 16);
+    }
+
+    #[test]
+    fn test_io_profile_counts_reads_and_bytes_when_enabled() {
+        let tmp = create_test_gguf_with_data();
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        ds.set_profiling(true);
+        ds.reset_io_profile();
+        let data = ds.read_tensor("a.weight").unwrap();
+        assert_eq!(data.len(), 16);
+        let profile = ds.io_profile();
+        assert_eq!(profile.bytes_read, 16);
+        assert_eq!(profile.read_operations, 1);
+        assert_eq!(profile.read_failures, 0);
+        assert_eq!(profile.seek_operations, 1);
+        assert_eq!(profile.seeks_avoided, 0);
+        assert_eq!(profile.logical_tensor_reads, 1);
+        assert_eq!(profile.logical_tensor_bytes, 16);
+        assert_eq!(profile.coalesced_ranges, 0);
+        let tensor_profile = ds.tensor_io_profile();
+        let tensor_profile = tensor_profile.get("a.weight").unwrap();
+        assert_eq!(tensor_profile.bytes_read, 16);
+        assert_eq!(tensor_profile.read_operations, 1);
+        ds.reset_io_profile();
+        assert_eq!(ds.io_profile(), IoProfile::default());
+        assert!(ds.tensor_io_profile().is_empty());
+    }
+
+    #[test]
+    fn test_cursor_avoids_seek_for_adjacent_physical_reads() {
+        let tmp = create_test_gguf_with_data();
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        ds.set_profiling(true);
+        ds.reset_io_profile();
+        ds.read_tensor("a.weight").unwrap();
+        ds.read_tensor("b.weight").unwrap();
+        let profile = ds.io_profile();
+        assert_eq!(profile.read_operations, 2);
+        assert_eq!(profile.seek_operations, 1);
+        assert_eq!(profile.seeks_avoided, 1);
+
+        ds.read_tensor("a.weight").unwrap();
+        let profile = ds.io_profile();
+        assert_eq!(profile.seek_operations, 2);
+        assert_eq!(profile.seeks_avoided, 1);
+    }
+
+    #[test]
+    fn test_coalesced_read_separates_logical_and_physical_profile_counts() {
+        let tmp = create_test_gguf_with_data();
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        ds.set_profiling(true);
+        ds.reset_io_profile();
+        let a = ds.get_descriptor("a.weight").unwrap();
+        let b = ds.get_descriptor("b.weight").unwrap();
+        let bytes = ds
+            .read_coalesced_tensor_range(&[a, b], a.file_offset, 48)
+            .unwrap();
+        assert_eq!(bytes.len(), 48);
+        let profile = ds.io_profile();
+        assert_eq!(profile.logical_tensor_reads, 2);
+        assert_eq!(profile.logical_tensor_bytes, 48);
+        assert_eq!(profile.read_operations, 1);
+        assert_eq!(profile.bytes_read, 48);
+        assert_eq!(profile.coalesced_ranges, 1);
+        assert_eq!(profile.coalesced_gap_bytes, 0);
+    }
+
+    #[test]
+    fn test_coalesced_reads_reuse_caller_buffer_capacity() {
+        let tmp = create_test_gguf_with_data();
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        ds.set_profiling(true);
+        let a = ds.get_descriptor("a.weight").unwrap();
+        let b = ds.get_descriptor("b.weight").unwrap();
+        let mut buffer = Vec::with_capacity(48);
+        ds.read_coalesced_tensor_range_into(&[a, b], a.file_offset, 48, &mut buffer)
+            .unwrap();
+        ds.read_coalesced_tensor_range_into(&[a, b], a.file_offset, 48, &mut buffer)
+            .unwrap();
+        let profile = ds.io_profile();
+        assert_eq!(profile.read_buffer_reuses, 2);
+        assert_eq!(profile.read_buffer_growths, 0);
+        assert_eq!(buffer.len(), 48);
+    }
+
+    #[test]
+    fn test_coalesced_small_gap_preserves_explicit_tensor_slices() {
+        let gap = 16usize;
+        let tmp = create_test_gguf_with_gap(gap);
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        ds.set_profiling(true);
+        let a = ds.get_descriptor("a.weight").unwrap();
+        let b = ds.get_descriptor("b.weight").unwrap();
+        let span = 8 + gap as u64 + 8;
+        let bytes = ds
+            .read_coalesced_tensor_range(&[a, b], a.file_offset, span)
+            .unwrap();
+        assert_eq!(f32::from_le_bytes(bytes[0..4].try_into().unwrap()), 1.0);
+        let b_start = 8 + gap;
+        assert_eq!(
+            f32::from_le_bytes(bytes[b_start..b_start + 4].try_into().unwrap()),
+            3.0
+        );
+        assert!(bytes[8..b_start].iter().all(|byte| *byte == 0xA5));
+        let profile = ds.io_profile();
+        assert_eq!(profile.logical_tensor_bytes, 16);
+        assert_eq!(profile.bytes_read, span);
+        assert_eq!(profile.coalesced_gap_bytes, gap as u64);
+    }
+
+    #[test]
+    fn test_direct_f32_read_matches_logical_decode_and_layout() {
+        // GGML shape [in=3, out=2], file rows [1,2,3] and [4,5,6].
+        let values = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let bits: Vec<u32> = values.iter().map(|value| value.to_bits()).collect();
+        let tmp = create_single_f32_gguf(&[3, 2], &bits);
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        let desc = ds.get_descriptor("test.weight").unwrap();
+
+        let direct = ds.read_f32_tensor_by_descriptor(desc).unwrap();
+        let raw = ds.read_tensor_by_descriptor(desc).unwrap();
+        let reference: Vec<f32> = raw
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|chunk| f32::from_le_bytes(*chunk))
+            .collect();
+        assert_eq!(
+            direct
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            reference
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>()
+        );
+
+        let tensor = crate::tensor::TensorData::from_f32_vec(
+            desc.dimensions.clone(),
+            desc.num_elements,
+            direct,
+        )
+        .unwrap();
+        assert_eq!(tensor.shape(), &[3, 2]);
+        let mut output = [0.0f32; 2];
+        tensor.matvec(&[1.0, 10.0, 100.0], &mut output).unwrap();
+        assert_eq!(output, [321.0, 654.0]);
+    }
+
+    #[test]
+    fn test_direct_f32_read_preserves_edge_bit_patterns() {
+        let bits = [
+            0x0000_0000, // +0
+            0x8000_0000, // -0
+            0x3fc0_0000, // +1.5
+            0xc010_0000, // -2.25
+            0x0000_0001, // smallest positive subnormal
+            0x8000_0001, // smallest negative subnormal
+            0x7f80_0000, // +Inf
+            0xff80_0000, // -Inf
+            0x7fc1_2345, // quiet NaN payload
+            0x7fa1_2345, // signaling NaN payload
+        ];
+        let tmp = create_single_f32_gguf(&[bits.len() as u64], &bits);
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        let desc = ds.get_descriptor("test.weight").unwrap();
+        let direct = ds.read_f32_tensor_by_descriptor(desc).unwrap();
+        let actual: Vec<u32> = direct.iter().map(|value| value.to_bits()).collect();
+        assert_eq!(actual.as_slice(), &bits);
+    }
+
+    #[test]
+    fn test_direct_f32_short_read_is_error() {
+        let bits = [1.0f32.to_bits(), 2.0f32.to_bits(), 3.0f32.to_bits()];
+        let tmp = create_single_f32_gguf(&[3], &bits);
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        let desc = ds.get_descriptor("test.weight").unwrap();
+        tmp.as_file()
+            .set_len(desc.file_offset + desc.byte_length.unwrap() - 1)
+            .unwrap();
+
+        let error = ds.read_f32_tensor_by_descriptor(desc).unwrap_err();
+        assert!(
+            matches!(&error, DataSourceError::Io(io) if io.kind() == std::io::ErrorKind::UnexpectedEof),
+            "unexpected error: {:?}",
+            error
+        );
+    }
+
+    #[test]
+    fn test_valid_range_read() {
+        let tmp = create_test_gguf_with_data();
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        // Read second element of a.weight: offset 4, length 4
+        let data = ds.read_tensor_range("a.weight", 4, 4).unwrap();
+        let f = f32::from_le_bytes(data[0..4].try_into().unwrap());
+        assert_eq!(f, 2.0);
+    }
+
+    #[test]
+    fn test_invalid_range_rejection() {
+        let tmp = create_test_gguf_with_data();
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        // Offset beyond tensor length
+        let err = ds.read_tensor_range("a.weight", 100, 4).unwrap_err();
+        match err {
+            DataSourceError::InvalidRange(_) => {}
+            _ => panic!("expected InvalidRange, got {:?}", err),
+        }
+        // Length exceeds
+        let err = ds.read_tensor_range("a.weight", 12, 8).unwrap_err();
+        match err {
+            DataSourceError::InvalidRange(_) => {}
+            _ => panic!("expected InvalidRange, got {:?}", err),
+        }
+        // Overflow must be rejected rather than wrapping into an in-bounds read.
+        let err = ds.read_tensor_range("a.weight", 1, u64::MAX).unwrap_err();
+        assert!(matches!(err, DataSourceError::InvalidRange(_)));
+    }
+
+    #[test]
+    fn test_invalid_file_offset_rejection() {
+        // Create a GGUF where tensor claims to be beyond file
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GGUF");
+        write_u32(&mut buf, 3);
+        write_u64(&mut buf, 1);
+        write_u64(&mut buf, 0);
+        write_string(&mut buf, "bad.weight");
+        write_u32(&mut buf, 1);
+        write_u64(&mut buf, 4);
+        write_u32(&mut buf, 0);
+        write_u64(&mut buf, 999999); // huge offset
+        let pos = buf.len() as u64;
+        let aligned = align_offset(pos, 32);
+        buf.extend(vec![0u8; (aligned - pos) as usize]);
+        // No data
+        let mut tmp = NamedTempFile::new().unwrap();
+        tmp.write_all(&buf).unwrap();
+        tmp.flush().unwrap();
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        let err = ds.read_tensor("bad.weight").unwrap_err();
+        match err {
+            DataSourceError::OutOfBounds { .. } => {}
+            _ => panic!("expected OutOfBounds, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_large_file_incremental_access() {
+        // Simulate large file larger than cache: create file with 1M elements but only read chunks
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GGUF");
+        write_u32(&mut buf, 3);
+        write_u64(&mut buf, 1);
+        write_u64(&mut buf, 0);
+        write_string(&mut buf, "large.weight");
+        write_u32(&mut buf, 1);
+        write_u64(&mut buf, 1_000_000);
+        write_u32(&mut buf, 0); // F32
+        write_u64(&mut buf, 0);
+        let pos = buf.len() as u64;
+        let aligned = align_offset(pos, 32);
+        buf.extend(vec![0u8; (aligned - pos) as usize]);
+        // Write 4MB of data (1M * 4)
+        buf.extend(vec![0xAB; 4_000_000]);
+
+        let mut tmp = NamedTempFile::new().unwrap();
+        tmp.write_all(&buf).unwrap();
+        tmp.flush().unwrap();
+
+        let ds = GgufDataSource::open(tmp.path()).unwrap();
+        // File size is ~4MB + header, but we can read incrementally without loading all
+        let chunk1 = ds.read_tensor_range("large.weight", 0, 1024).unwrap();
+        assert_eq!(chunk1.len(), 1024);
+        let chunk2 = ds.read_tensor_range("large.weight", 1024, 1024).unwrap();
+        assert_eq!(chunk2.len(), 1024);
+        // Ensure we didn't load entire file into memory at once (by design, we only read requested range)
+    }
+}
