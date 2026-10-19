@@ -11,6 +11,11 @@
 *.log
 *.log.*
 
+# Git
+.git/
+RAMforge/.git/
+forgeCORE/.git/
+
 # Native build artifacts
 /native/build/
 
