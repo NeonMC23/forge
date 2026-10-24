@@ -106,12 +106,13 @@ for the boundary and validation record.
 
 **Supported formats:**
 - `Q4_0`: block 32, 18 bytes (2B half scale `d` + 16B packed 4-bit quants, dequant `d*(q-8)`)
+- `Q5_0`: block 32, 22 bytes (2B half scale `d`, 4B fifth-bit mask, 16B packed 4-bit quants; dequant `d*(q-16)`)
 - `Q8_0`: block 32, 34 bytes (2B half scale `d` + 32B int8 quants, dequant `d*q`)
 - `Q4_K`: block 256, 144 bytes (2B half `d`, 2B half `dmin`, 12B scales (8 scales + 8 mins packed 6-bit), 128B 4-bit quants; unpack via `get_scale_min_k4(j)`, dequant `d*sc*q - dmin*m`)
-- Since M5.6.1: `Q2_K`, `Q3_K`, `Q5_K`, `Q6_K`, `Q8_K` block layouts, `dequantize_row_*`, and `matvec_*` are also implemented in `quant.rs` with the same resident-compact representation. `Q4_1`, `Q5_0`, `Q5_1`, `Q8_1`, `IQ*` remain unsupported.
+- Since M5.6.1: `Q2_K`, `Q3_K`, `Q5_K`, `Q6_K`, `Q8_K` block layouts, `dequantize_row_*`, and `matvec_*` are also implemented in `quant.rs` with the same resident-compact representation. `Q5_0` was added after real-model validation against `SmolLM2-135M-Instruct-Q4_K_M.gguf`. `Q4_1`, `Q5_1`, `Q8_1`, `IQ*` remain unsupported.
 
 **Representation:**
-- `TensorData` enum: `F32`, `F16`, `BF16`, `Q4_0(QuantizedTensor)`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K`, `Q8_K`
+- `TensorData` enum: `F32`, `F16`, `BF16`, `Q4_0(QuantizedTensor)`, `Q5_0`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K`, `Q8_K`
 - `QuantizedTensor { ggml_type, shape, num_elements, raw_data: Vec<u8> }` keeps quantized compact while resident
 - `resident_bytes()` = raw_data.len() (e.g. 144B for 256 values Q4_K vs 1024B F32) – shows memory saving
 - Runtime quantized `matvec()` uses compact block-wise kernels and bounds dequantization to block workspaces; the storage-independent reference helper uses one reusable decoded row buffer and remains outside the runtime budget ledger.
@@ -282,11 +283,11 @@ crates/
 
 **Supported execution architectures:** `llama`, `qwen2` (dense). Mistral works only when represented by a validated llama-compatible GGUF architecture/tensor layout. `qwen3`, `qwen35`, `gemma`, and `phi` are inspect/plan-only registry entries.
 
-**Supported tensor types:** `F32`, `F16`, `BF16`, `Q4_0`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K`, `Q8_K` – all usable for inference
+**Supported tensor types:** `F32`, `F16`, `BF16`, `Q4_0`, `Q5_0`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K`, `Q8_K` – all usable for inference
 
 **Unsupported (clear error):**
 - Unsupported execution architectures → capability-aware error listing detected architecture, inspect/plan status, and supported execution architectures
-- Other quantized types (Q4_1, Q5_0, Q5_1, Q8_1, IQ*, …) → "unsupported tensor type for inference"
+- Other quantized types (Q4_1, Q5_1, Q8_1, IQ*, …) → "unsupported tensor type for inference"
 - Missing tensors → "missing tensor 'blk.0.attn_q.weight'"
 - Budget too small → "RAM budget too small for layer..."
 
@@ -306,7 +307,33 @@ crates/
 - Existing Milestone 4 streaming tests still pass
 - M6 integrity proofs: scoped temp release on success/error (`memory.rs`), budgeted cache inserts/evictions (`cache.rs`), explicit ggml layout incl. non-square Q4_0/Q4_K/F32/F16 anchors and arity-error rejections (`tensor.rs`, `backend.rs`), chunked streamed output projection + too-small-budget failure (`persistent.rs`), no-copy attention vs naive reference (`ops.rs`), chunk-growing KV preserving data with exact bytes (`kv_cache.rs`), end-to-end out-of-core inference with model > budget (`inference.rs`)
 
-The last executed baseline passed 158 tests with 0 failures and 0 ignored. The current source inventory is 179 tests after adding shared-accounting, execution-preflight, bounded layer-cache, bounded coalesced-read, cursor-reuse, and grouped-buffer-reuse regressions; rerun the full suite before commit.
+The current full workspace run passes **408 tests, 0 failed, 2 ignored** (the real-model Qwen2.5 diagnostic and the quantized microbenchmark) using the shared native fixture. Run `scripts/test.sh --workspace --locked` to reproduce it.
+
+## Real-model smoke validation
+
+`scripts/smoke-real-models.sh` runs the two real GGUF files sequentially, each in a separate process, and records the exact command, exit status, `/usr/bin/time -v` facts, model hashes, memory state, GPU state, and captured output. It refuses to start a run when `MemAvailable` is below 4 GiB by default. It never writes, converts, renames, or deletes a model file.
+
+```sh
+cd RAMforge
+scripts/smoke-real-models.sh              # builds the CLI, then runs four cases
+scripts/smoke-real-models.sh --no-build   # reuse target/debug/ramforge
+```
+
+Evidence from the 2026-10-24 run (`/tmp/ramforge-real-model-smoke/20261024-184439`):
+
+| Model | Backend | Exit | Wall | Max RSS | Managed peak | Native compute buffer |
+|---|---|---:|---:|---:|---:|---:|
+| SmolLM2-135M Q4_K_M | legacy | 0 | 15.54 s | 135.1 MiB | 99.19 MiB | n/a |
+| SmolLM2-135M Q4_K_M | ForgeCore CPU | 0 | 0.30 s | 358.6 MiB | not exposed | 98.25 MiB |
+| Qwen2.5-1.5B Q4_0 | legacy | 0 | 17.94 s | 1.10 GiB | 1012.05 MiB | n/a |
+| Qwen2.5-1.5B Q4_0 | ForgeCore CPU | 0 | 1.87 s | 2.68 GiB | not exposed | 302.75 MiB |
+
+- All four runs generated 8 tokens, exited 0, and reported `Swaps: 0`.
+- The legacy backend retained 30/30 SmolLM2 layers and 28/28 Qwen2.5 layers because the 4 GiB budget exceeded each model's managed footprint.
+- ForgeCore's requested 4 GiB budget is diagnostic only and is **not enforced**; its RSS includes the loader, page cache, Rust heap, and native allocations.
+- The GPU stayed at 40 MiB used / 3731 MiB free before and after every run. The pinned native build is CPU-only and RAMforge has no GPU execution backend, so this is not GPU validation.
+- SmolLM2 output was coherent on both backends. The raw `Hello` prompt was not chat-templated, so the Qwen2.5 snippets (`1. 2.` legacy, `, I'm trying...` ForgeCore) are not treated as quality evidence.
+- Model inputs were unchanged; recorded hashes were `2e8040ce…c68c2d` for SmolLM2 and `dcd819ff…7bbfdb` for Qwen2.5.
 
 ## Known Limitations
 
@@ -314,7 +341,7 @@ The last executed baseline passed 158 tests with 0 failures and 0 ignored. The c
 - The layer cache is generation-local and strict LRU. If its complete-layer capacity is smaller than a sequential full-model working set, scan-pattern thrashing can produce few or no hits; planner capacity never guarantees hit rate.
 - Read coalescing is opportunistic and bounded. Large tensors/gaps, layouts exceeding the 64 MiB span cap, or insufficient grouped-buffer headroom retain one physical read per tensor; fewer reads do not guarantee lower NAS wall time until benchmarked.
 - Real-model execution and streaming are validated, but generated-text quality is not yet validated.
-- Quantized inference limited to Q4_0, Q8_0, Q2_K, Q3_K, Q4_K, Q5_K, Q6_K, Q8_K; Q4_1/Q5_0/Q5_1/Q8_1 and IQ* quants not supported
+- Quantized inference limited to Q4_0, Q5_0, Q8_0, Q2_K, Q3_K, Q4_K, Q5_K, Q6_K, Q8_K; Q4_1/Q5_1/Q8_1 and IQ* quants not supported
 - CPU-only: quantized matvec is scalar (block-wise dequant); F32 dot/matvec have runtime-detected AVX2 kernels and rayon row-parallelism; no GPU
 - Tokenizer: SentencePiece unigram (score-based Viterbi) and BPE (gpt2/qwen2 merges); other pre-tokenizers/model families untested
 - Persistent weights (`token_embd`, `output_norm`, `output`): resident when their actual retained representation is at most 25% of budget, otherwise streamed on demand with budget-charged bounded temps (`persistent.rs`)
@@ -326,7 +353,7 @@ The last executed baseline passed 158 tests with 0 failures and 0 ignored. The c
 
 - GPU, prefetch, double buffering, async I/O
 - HTTP server, MoE, speculative decoding, model downloading
-- Additional quantization formats beyond Q4_0/Q8_0/Q2_K/Q3_K/Q4_K/Q5_K/Q6_K/Q8_K; no SIMD kernels for quantized matvec (F32 AVX2 only)
+- Additional quantization formats beyond Q4_0/Q5_0/Q8_0/Q2_K/Q3_K/Q4_K/Q5_K/Q6_K/Q8_K; no SIMD kernels for quantized matvec (F32 AVX2 only)
 
 ## License
 

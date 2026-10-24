@@ -37,7 +37,15 @@ FORGE_LLAMA_DIR="$PWD/../native" cargo test --workspace --locked
 
 cd ../RAMforge
 scripts/test.sh --workspace --locked
+scripts/smoke-real-models.sh --no-build
 ```
+
+The smoke runner executes the two real models in `models/` sequentially, each
+in a separate process, and writes commands, exit status, RSS, GPU state, model
+hashes, and output to a temporary evidence directory. It never modifies the
+model files. See
+[RAMforge/README.md](RAMforge/README.md#real-model-smoke-validation) for the
+latest measured matrix.
 
 Current state and limitations are recorded in
 [forgeCORE/docs/PROJECT_STATE.md](forgeCORE/docs/PROJECT_STATE.md) and
