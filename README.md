@@ -35,15 +35,19 @@ engineering and publication policy.
 |---|---|---|---|
 | `llama` | yes | yes | SmolLM2-135M Q4_K_M |
 | `qwen2` | yes | yes | Qwen2.5-1.5B Q4_0 |
-| `gptneox` / `gpt_neox` | not-yet (explicit, actionable rejection) | yes | Pythia-70M-deduped Q8_0; native and independent NumPy parity |
+| `gptneox` / `gpt_neox` | not-yet (explicit, actionable rejection) | yes | Pythia-70M-deduped Q8_0; native and independent NumPy parity; GPT-NeoX-20B Q4_K_M under an 8 GiB cgroup cap |
 | `qwen3`, `qwen35`, `gemma`, `phi`, literal `mistral` | not-yet | not-yet | inspect/plan only |
 
 `gptneox` execution must be requested explicitly with `--backend forgecore`; the
-legacy path never falls back or approximates it. The real 20B GPT-NeoX GGUF is
-inspect/plan-only and was not run: forgeCORE loads weights eagerly, does not
-enforce RAM budgets, and the host has 15.39 GiB RAM. See
-[RAMforge/README.md](RAMforge/README.md#architecture-and-quantization-matrix)
-for the full architecture/quantization matrices and the measured budget table.
+legacy path never falls back or approximates it. The 20B GPT-NeoX GGUF
+(13,135,032,320 B file, 13,133,230,080 tensor bytes) executed under a hard
+8 GiB cgroup v2 cap with `--enforce-ram --no-repack`: 7.65 GiB of the 12.23 GiB
+mapping resident, 54,721 limit events, no OOM kill, one greedy token ` Paris`
+in 16.94 s. This is OS demand paging of the file-backed mapping, not a
+RAMforge per-layer staging engine; the loader still prefaults the whole file.
+The 4G/1G/100M 20B cases were not run. See
+[RAMforge/README.md](RAMforge/README.md#enforced-host-memory-budgets-cgroup-v2)
+for the enforced matrix, performance, and limitations.
 
 ## Current validation entry points
 
@@ -58,6 +62,14 @@ scripts/test.sh --workspace --locked
 scripts/smoke-real-models.sh --no-build
 RAMFORGE_GPTNEOX_MODEL=/path/to/pythia-70m.Q8_0.gguf \
   scripts/smoke-real-models.sh --no-build --include-gptneox --matrix
+
+# enforced host-memory path (cgroup v2 delegation required)
+target/release/ramforge run /path/to/qwen2.5-1.5b.gguf \
+  --ram 512M --enforce-ram --ctx 256 --no-repack \
+  --prompt "The capital of France is" --max-tokens 1 \
+  --temperature 0 --backend forgecore --memory-report --profile
+cargo test -p ramforge-runtime --test cgroup_enforcement --locked -- --ignored --nocapture
+cargo test -p ramforge-cli --test enforce_ram --locked -- --ignored --nocapture
 ```
 
 The smoke runner executes the two real models in `models/` sequentially, each
