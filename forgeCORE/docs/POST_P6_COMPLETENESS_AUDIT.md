@@ -15,19 +15,6 @@ deterministic fixtures (`tiny-llama`, `--tok`, `--dsv4`)
 > "missing" item below is classified; only items RAMforge cannot
 > safely do without could justify a targeted continuation. None meet
 > that bar (§10–§13).
->
-> **Current-status qualification (2026-10-18):** The GGUF entries below
-> preserve this audit's 2026-10-06 snapshot. In the current tree,
-> `crates/forge-core/src/gguf.rs` provides a Rust-owned, payload-lazy
-> inspection API for GGUF headers, metadata, tensor descriptors, checked
-> production storage geometry, and bounded ranges; `lib.rs` reexports
-> `inspect_gguf`, `inspect_gguf_bytes`, and `inspect_gguf_path`. It uses
-> production `quant.rs` geometry, while `reference/quant.rs` remains a
-> separate scalar test oracle. The native `gguf_*` FFI surface remains
-> unbound, and RAMforge's own parser/data-source and planning policy
-> remain separate. Thus the historical “zero parsing”/“RAMforge
-> responsibility” wording below must not be read as current forgeCORE
-> implementation status.
 
 ---
 
@@ -263,7 +250,7 @@ declarations ≈ 25% — deliberately, per bind-on-need).
 | `format_name` (used internally), `ggml_nelements`… (now used) | — | P0's bound-but-unused list is down to `ggml_log_set` + `dev_by_type` (P7 / trivial) |
 | KV allocated/resident (`breakdown()` C++-only), per-layer K/V read-back, `decode_with_sampler` (commented out), device vendor field (no native field) | **UPSTREAM-LIMITED** | No C API at the pin; no forgeCORE work can ground these |
 | Deprecated `llama_token_*`/`llama_n_vocab`/`llama_free_model` aliases, `llama_batch_init/free/get_one`, `llama_encode` (unreachable), training/backward/grad APIs, inplace-op variants, custom vtable samplers, `tensor_memset` (unqueryable abort), `view_init` (NULL-buffer invariant) | **INTENTIONALLY OUT** | Safer equivalent exists, unreachable, or unsafe surface |
-| All 61 `gguf_*` (zero parsing) | **Historical 2026-10-06: RAMforge RESPONSIBILITY** | Historical rationale: RAMforge owned its GGUF parser and forgeCORE had no Rust inspector then. Current forgeCORE has a separate payload-lazy `gguf.rs`; native `gguf_*` APIs remain unbound. |
+| All 61 `gguf_*` (zero parsing) | **RAMforge RESPONSIBILITY** | RAMforge owns its GGUF parser; forgeCORE must not duplicate it |
 | Device/placement/scheduling/retention/migration policy of any kind | **RAMforge RESPONSIBILITY** | Architecture boundary (§5 of task) |
 
 ---
@@ -437,7 +424,7 @@ No redesign recommended. No change proposed for style.
 | 17 | IQ/TQ/MXFP4/NVFP4/Q1_0/Q2_0/I64 dtypes | unmapped (model path inherits) | Optional | forgeCORE iff asked | none |
 | 18 | Arch/ftype/rope-freq/model predicates | mostly absent | Optional | forgeCORE iff asked | none (RAMforge parses GGUF itself) |
 | 19 | Custom-split loading, quantize/save, chat templates, LoRA, threadpool, NUMA | absent | Out | — | none (authoring/policy/deferred) |
-| 20 | GGUF parsing/inspection | **Historical: absent (zero) at 2026-10-06** | — | **RAMforge's existing parser/data-source** | Current forgeCORE separately provides payload-lazy `gguf.rs` inspection; the ownership is not exclusive. |
+| 20 | GGUF parsing/inspection | absent (zero) | — | **RAMforge** | none (RAMforge owns its parser) |
 | 21 | Placement/selection/scheduling/budget/eviction/prefetch policy | absent (none!) | — | **RAMforge** | none (correctly unmirrored) |
 | 22 | Out-of-core weight streaming (model path) | impossible at pin | — | future arch decision | none (eager libllama loads) |
 | 23 | Typed `Error` variants | string+prefix | Optional | forgeCORE iff RAMforge needs matching | none (adapter works around) |
@@ -460,12 +447,10 @@ No redesign recommended. No change proposed for style.
 - **OPTIONAL (build iff RAMforge demonstrates need):** extra
   samplers; tokenizer streaming/expansion; wider transfers;
   exotic dtypes; arch metadata; typed errors.
-- **RAMforge-OWNED (must never move):** RAMforge's existing GGUF
-  parser/data-source and all placement/selection/scheduling/budget/
-  eviction/prefetch/residency/orchestration policy; generation loops;
-  diagnostics presentation; the shadow-KV retirement migration
-  decision. This remains separate from forgeCORE's payload-lazy
-  `gguf.rs` inspection API.
+- **RAMforge-OWNED (must never move):** GGUF parsing; all
+  placement/selection/scheduling/budget/eviction/prefetch/
+  residency/orchestration policy; generation loops; diagnostics
+  presentation; the shadow-KV retirement migration decision.
 - **UPSTREAM-LIMITED (no action possible at pin):** KV
   allocated/resident bytes; per-layer K/V read-back; fused
   decode+sample; device vendor.

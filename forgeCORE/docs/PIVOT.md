@@ -10,10 +10,9 @@ high-performance Rust abstraction over upstream llama.cpp/ggml:
 RAMforge → ForgeCore → llama.cpp/ggml → CPU / CUDA / HIP / Vulkan / Metal / …
 ```
 
-Native execution, quantization kernels, and model loading are upstream's
-job. ForgeCore owns device/backend discovery, safe tensor and graph
-handles, model-load plumbing, checked GGUF storage geometry,
-payload-lazy inspection, validation oracles, and the RAMforge-facing API
+All execution, quantization, and model loading are upstream's job.
+ForgeCore owns device/backend discovery, safe tensor and graph handles,
+model-load plumbing, validation oracles, and the RAMforge-facing API
 contracts. Nothing in this tree reimplements ggml kernels.
 
 ## 1. Pre-pivot code audit and disposition
@@ -23,35 +22,24 @@ Module-by-module verdict:
 
 | Module (pre-pivot lines) | Verdict | Now |
 |---|---|---|
-| `quant.rs` (785) | **Split** | Top-level `quant.rs` owns production-visible checked geometry (`QuantFormat`, `BlockSpec`, `block_spec`, `tensor_bytes`, `row_bytes`) plus `#[cfg(test)]` helper checks; `reference/quant.rs` is the `reference::quant` frozen scalar oracle used by tests |
-| `ops.rs` (406) | **Retain as oracle** | `reference/ops.rs` is active; the legacy top-level `src/ops.rs` has been removed and is not declared by `lib.rs` |
-| `dtype.rs` (93) | **Split** | Top-level `dtype.rs` is the active GGML dtype mapping; `reference/convert.rs` holds exact F16/BF16 oracle conversions |
-| `shape.rs` (191) | **Retain as oracle** | `reference/shape.rs` is active; the legacy top-level `src/shape.rs` has been removed and is not declared by `lib.rs` |
-| `checkpoint.rs` (124) | **Retain as oracle** | `reference/checkpoint.rs` is active as a small numerical-summary/accessor/top-k validation utility with no external consumers; the legacy top-level `src/checkpoint.rs` has been removed and is not declared by `lib.rs` |
+| `quant.rs` (785) | **Retain as oracle** | `reference/quant.rs` — scalar Q4_0/Q8_0/Q6_K/… decoders for cross-validation |
+| `ops.rs` (406) | **Retain as oracle** | `reference/ops.rs` — scalar matvec/add/RoPE/RMS-norm expected-value kernels |
+| `dtype.rs` (93) | **Retain as oracle** | `reference/convert.rs` — exact F16/BF16 bit conversions |
+| `shape.rs` (191) | **Retain as oracle** | `reference/shape.rs` — row-major layout helpers the oracles are written against |
+| `checkpoint.rs` (124) | **Retain as oracle** | `reference/checkpoint.rs` — legacy tiny-checkpoint reader for old fixtures |
 | `error.rs` (23) | **Retain, extended** | `error.rs` — same `Error(String)` type plus `backend`/`unsupported`/`invalid` constructors |
 | `model.rs` (690) | **Replaced** | `model.rs` — deleted the hand-written executor; now a `llama_model` owner (load/free/metadata) |
-| `attention.rs` (265) | **Removed from active graph** | Upstream owns attention (ggml ops / libllama); legacy source is preserved in the historical archive at `docs/archive/forge-core-legacy/attention.rs` and is not declared by `lib.rs` |
-| `kv.rs` (279) | **Removed from active graph** | Upstream owns KV-cache (libllama contexts); legacy source is preserved in the historical archive at `docs/archive/forge-core-legacy/kv.rs` and is not declared by `lib.rs` |
-| `tests/tiny_model.rs` (555) | **Removed from workspace** | Validated our old engine, not ggml; current native model tests are architectural coverage, not a one-to-one replacement |
-| `tests/attention_gqa.rs` (115) | **Removed from workspace** | Covered removed engine code; current native execution tests are not one-to-one replacements |
-| `tests/kv_cache.rs` (98) | **Removed from workspace** | Covered removed engine code; current native KV/state tests are not one-to-one replacements |
-| `tests/quant_contract.rs` (107) | **Retain** | Current integration tests import the frozen oracle through `reference::quant` and `reference::shape` |
+| `attention.rs` (265) | **Removed** | Upstream owns attention (ggml ops / libllama) |
+| `kv.rs` (279) | **Removed** | Upstream owns KV-cache (libllama contexts) |
+| `tests/tiny_model.rs` (555) | **Removed** | Validated our old engine, not ggml; superseded by `tests/ggml_smoke.rs` |
+| `tests/attention_gqa.rs` (115) | **Removed** | Covered removed engine code |
+| `tests/kv_cache.rs` (98) | **Removed** | Covered removed engine code |
+| `tests/quant_contract.rs` (107) | **Retain** | Same contract tests, repathed to `reference::` |
 
 Retained oracle code is frozen scalar Rust: it never calls ggml, is
 never on an execution path, and exists only so tests can check ggml
 numerics without trusting ggml. No new hand-written quants or kernels
 will be added; those belong upstream.
-
-The table's **removed from active graph** wording is deliberate: the
-legacy implementations are not part of the active module graph. The
-archived `attention.rs` and `kv.rs` are historical source material under
-`docs/archive/forge-core-legacy/`; `lib.rs` declares only the current
-production modules and the `reference::` oracle modules. The three legacy
-integration-test files are physically absent. Current `ggml_smoke`,
-`cpu_decode`, and `kv_state` tests cover the native ggml/libllama model,
-context, and KV/state paths, while `quant_contract` covers
-`reference::quant`; these are architectural replacements, not claims of
-one-to-one coverage for the removed tests.
 
 The Qwen2.5 diagnostic prompt/ID fixtures survived as
 `model::QWEN25_DIAGNOSTIC_PROMPT{,_IDS}` placeholders for future
@@ -106,12 +94,6 @@ crates/forge-sys    hand-written FFI: opaque handles, repr(C) structs,
 crates/forge-core   safe API + frozen oracles (depends only on forge-sys)
 ```
 
-`gguf.rs` provides a separate, payload-lazy inspection API:
-`inspect`/`inspect_bytes`/`inspect_path` validate GGUF headers, metadata,
-tensor descriptors, storage geometry, and bounded file ranges without
-copying or decoding tensor payloads. It does not load or execute a model;
-production model loading remains the `Model`/libllama path.
-
 Public API (no raw pointers anywhere):
 
 | Item | Role |
@@ -126,12 +108,6 @@ Public API (no raw pointers anywhere):
 | `Logits::{values, n_vocab}` | Owned `n_vocab`-float copy per decoded batch index |
 | `DType` | Safe `ggml_type` mirror with explicit unknown-id errors |
 | `reference::{quant, ops, convert, shape, checkpoint}` | Frozen validation oracles (never executed) |
-
-The canonical RAMforge adapter consumes the public `Model`/`Context`/
-`BatchBuilder`/`Logits` and device-selection surface through its local
-ForgeCore path patch; it does not depend on ForgeCore's quantization or
-reference internals. That adapter remains explicitly CPU-only and rejects
-unsupported non-CPU selections rather than silently falling back.
 
 `Backend`, `Tensor`, `Model`, `Context`, and `Batch` are `!Send +
 !Sync` (raw handles) and free their allocations on drop. All fallible
@@ -208,15 +184,6 @@ index), +2 `forge-sys` layout. C probes confirmed: decode codes
 (not aborts), `llama_get_logits_ith` NULL on invalid index in
 Release while Debug aborts, positive index = batch token position.
 `fmt`/`clippy -D warnings`/`release` clean.
-
-The validation record above is historical. A later current-workspace
-run on 2026-10-18, using Rust/Cargo 1.99.1 and the same external CPU
-native environment, recorded 357 passed ForgeCore tests, a passing
-workspace check, Clippy with warnings denied, `cargo doc` with warnings
-denied, and `cargo fmt --all -- --check`. The optional model fixtures
-were absent and `FORGE_TEST_MODEL`, `FORGE_TEST_MODEL_TOK`, and
-`FORGE_TEST_MODEL_DSV4` were unset, so fixture-dependent tests did not
-exercise real model files.
 
 ## 9. Roadmap (out of this milestone)
 

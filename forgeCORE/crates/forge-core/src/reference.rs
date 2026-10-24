@@ -13,9 +13,8 @@
 //! - `convert` holds the exact F16/BF16 bit conversions the oracles need.
 //! - `shape` holds the row-major layout helpers the oracles are written
 //!   against.
-//! - `checkpoint` provides deterministic numerical summaries, indexed
-//!   access, formatting, and top-k helpers for validation. It currently has
-//!   no legacy checkpoint-file parser or external consumers.
+//! - `checkpoint` keeps the legacy tiny-checkpoint format readable so old
+//!   fixtures stay loadable.
 //!
 //! Rules: oracle code must stay dependency-free scalar Rust, must never
 //! call into ggml, and must never be used for real execution. New quants

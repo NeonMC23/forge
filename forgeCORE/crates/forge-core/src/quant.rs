@@ -10,8 +10,8 @@
 //! the quantization **interface** every format will implement:
 //!
 //! 1. exact block geometry ([`block_spec`]);
-//! 2. scalar row dequantization (`dequantize_row`), retained for tests;
-//! 3. reference dot/matvec over dequantized rows (`matvec_reference`), retained for tests;
+//! 2. scalar row dequantization ([`dequantize_row`]);
+//! 3. reference dot/matvec over dequantized rows ([`matvec_reference`]);
 //! 4. deterministic block-level tests (below and in `tests/quant_contract.rs`).
 //!
 //! Formats without a reviewed scalar decoder return an explicit
@@ -32,11 +32,11 @@
 //!   low 4-bit nibbles, 64 bytes of high 2-bit groups, 16 signed int8
 //!   scales, then the little-endian F16 super-block scale `d`;
 //!   `value = d * scale * (six_bit_quant - 32)`. The byte map is
-//!   documented on the test-only `dequantize_block_q6_k` helper.
+//!   documented on [`dequantize_block_q6_k`].
 //!
 //! ## Row geometry
 //!
-//! A quantized matrix with [`crate::reference::shape::MatrixShape`]
+//! A quantized matrix with [`MatrixShape`]
 //! `[input, output]` stores `output` consecutive rows of
 //! [`row_bytes`] bytes; row `o` starts at byte `o * row_bytes`. The number
 //! of blocks per row is `input / values_per_block`, so `input` must be an
@@ -44,9 +44,7 @@
 
 use crate::dtype::DType;
 use crate::error::{Error, Result};
-#[cfg(test)]
 use crate::reference::convert::{bf16_bits_to_f32, f16_bits_to_f32};
-#[cfg(test)]
 use crate::reference::shape::MatrixShape;
 
 /// GGUF storage formats with checked block geometry.
@@ -222,7 +220,7 @@ pub fn tensor_bytes(format: QuantFormat, element_count: u64) -> Result<u64> {
     let spec = block_spec(format);
     let values_per_block = u64::try_from(spec.values_per_block)
         .map_err(|_| Error(format!("{} block width does not fit in u64", format.name())))?;
-    if !element_count.is_multiple_of(values_per_block) {
+    if element_count % values_per_block != 0 {
         return Err(Error(format!(
             "{} element count {element_count} is not a multiple of block width {}",
             format.name(),
@@ -244,12 +242,8 @@ pub fn tensor_bytes(format: QuantFormat, element_count: u64) -> Result<u64> {
 ///
 /// `input_dim` must be an exact multiple of the format's block width.
 pub fn row_bytes(format: QuantFormat, input_dim: usize) -> Result<usize> {
-    let input = u64::try_from(input_dim).map_err(|_| {
-        Error(format!(
-            "{} input dimension does not fit in u64",
-            format.name()
-        ))
-    })?;
+    let input = u64::try_from(input_dim)
+        .map_err(|_| Error(format!("{} input dimension does not fit in u64", format.name())))?;
     let bytes = tensor_bytes(format, input)?;
     usize::try_from(bytes).map_err(|_| {
         Error(format!(
@@ -264,7 +258,6 @@ pub fn row_bytes(format: QuantFormat, input_dim: usize) -> Result<usize> {
 /// `bytes` must hold exactly [`row_bytes`] bytes and `out` exactly
 /// `input_dim` values. Formats without a reviewed decoder return an
 /// explicit unsupported error.
-#[cfg(test)]
 pub(crate) fn dequantize_row(
     format: QuantFormat,
     bytes: &[u8],
@@ -319,7 +312,6 @@ pub(crate) fn dequantize_row(
 /// Each output row is dequantized by [`dequantize_row`] and dotted with `x`
 /// in F32 in input order. `raw` must hold exactly
 /// `row_bytes * shape.output` bytes.
-#[cfg(test)]
 pub(crate) fn matvec_reference(
     format: QuantFormat,
     raw: &[u8],
@@ -380,7 +372,6 @@ const _: () = {
     assert!(block_spec(QuantFormat::Q6_K).values_per_block == Q6_K_BLOCK_VALUES);
 };
 
-#[cfg(test)]
 fn dequantize_row_q4_0(bytes: &[u8], out: &mut [f32]) {
     let (blocks, byte_rest) = bytes.as_chunks::<Q4_0_BLOCK_BYTES>();
     let (slots, slot_rest) = out.as_chunks_mut::<Q4_0_BLOCK_VALUES>();
@@ -395,7 +386,6 @@ fn dequantize_row_q4_0(bytes: &[u8], out: &mut [f32]) {
     }
 }
 
-#[cfg(test)]
 fn dequantize_row_q8_0(bytes: &[u8], out: &mut [f32]) {
     let (blocks, byte_rest) = bytes.as_chunks::<Q8_0_BLOCK_BYTES>();
     let (slots, slot_rest) = out.as_chunks_mut::<Q8_0_BLOCK_VALUES>();
@@ -408,7 +398,6 @@ fn dequantize_row_q8_0(bytes: &[u8], out: &mut [f32]) {
     }
 }
 
-#[cfg(test)]
 fn dequantize_row_f16(bytes: &[u8], out: &mut [f32]) {
     let (pairs, rest) = bytes.as_chunks::<2>();
     debug_assert!(rest.is_empty());
@@ -417,7 +406,6 @@ fn dequantize_row_f16(bytes: &[u8], out: &mut [f32]) {
     }
 }
 
-#[cfg(test)]
 fn dequantize_row_bf16(bytes: &[u8], out: &mut [f32]) {
     let (pairs, rest) = bytes.as_chunks::<2>();
     debug_assert!(rest.is_empty());
@@ -459,7 +447,6 @@ fn dequantize_row_bf16(bytes: &[u8], out: &mut [f32]) {
 /// Each output is `d * scale * (six_bit_quant - 32)` in F32 with
 /// left-to-right multiplication, exactly as GGML computes it.
 /// Reconstructed quants span `[-32, 31]`.
-#[cfg(test)]
 pub(crate) fn dequantize_block_q6_k(block: &[u8], out: &mut [f32]) -> Result<()> {
     if block.len() != Q6_K_BLOCK_BYTES {
         return Err(Error(format!(
@@ -481,7 +468,6 @@ pub(crate) fn dequantize_block_q6_k(block: &[u8], out: &mut [f32]) -> Result<()>
 ///
 /// Decodes the block with [`dequantize_block_q6_k`], then accumulates
 /// `sum(decoded[i] * x[i])` in F32 in index order.
-#[cfg(test)]
 pub(crate) fn dot_block_q6_k(block: &[u8], x: &[f32]) -> Result<f32> {
     if x.len() != Q6_K_BLOCK_VALUES {
         return Err(Error(format!(
@@ -503,7 +489,6 @@ pub(crate) fn dot_block_q6_k(block: &[u8], x: &[f32]) -> Result<f32> {
 /// `row` must hold exactly `row_bytes(Q6_K, x.len())` bytes. Accumulation
 /// is one F32 running sum in global index order, identical to decoding
 /// the whole row and then dotting it.
-#[cfg(test)]
 pub(crate) fn dot_row_q6_k(row: &[u8], x: &[f32]) -> Result<f32> {
     let expected = row_bytes(QuantFormat::Q6_K, x.len())?;
     if row.len() != expected {
@@ -526,7 +511,6 @@ pub(crate) fn dot_row_q6_k(row: &[u8], x: &[f32]) -> Result<f32> {
     Ok(sum)
 }
 
-#[cfg(test)]
 fn dequantize_block_q6_k_inner(block: &[u8], out: &mut [f32]) {
     debug_assert_eq!(block.len(), Q6_K_BLOCK_BYTES);
     debug_assert_eq!(out.len(), Q6_K_BLOCK_VALUES);
@@ -555,7 +539,6 @@ fn dequantize_block_q6_k_inner(block: &[u8], out: &mut [f32]) {
     }
 }
 
-#[cfg(test)]
 fn dequantize_row_q6_k(bytes: &[u8], out: &mut [f32]) {
     let (blocks, byte_rest) = bytes.as_chunks::<Q6_K_BLOCK_BYTES>();
     let (slots, slot_rest) = out.as_chunks_mut::<Q6_K_BLOCK_VALUES>();

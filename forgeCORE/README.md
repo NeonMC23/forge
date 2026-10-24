@@ -19,9 +19,9 @@ are upstream's job.
 ## Quickstart
 
 ```sh
-. /home/user/forge/forgeCORE/scripts/env.sh
-sh /home/user/forge/forgeCORE/scripts/setup-native.sh   # pinned llama.cpp build (outside the repo)
-cd /home/user/forge/forgeCORE
+. /home/user/forgeCORE/scripts/env.sh
+sh /home/user/forgeCORE/scripts/setup-native.sh   # pinned llama.cpp build (outside the repo)
+cd /home/user/forgeCORE
 cargo test --workspace
 ```
 

@@ -1,17 +1,13 @@
 #!/usr/bin/env sh
 # ForgeCore toolchain environment.
 #
-# Shared Git-free source workspace: /home/user/forge/
-#   /home/user/forge/RAMforge/
-#   /home/user/forge/forgeCORE/
-# The protected external Git clones remain at /home/user/RAMforge/ and
-# /home/user/forgeCORE/ and are user-managed.
+# Workspace invariant: /home/user/ must contain ONLY /home/user/forgeCORE/.
 # No .cargo/, .rustup/, registries, caches, build output, native checkouts,
-# or CMake trees may live under /home/user/forge/ (including its source trees).
+# or CMake trees may live under /home/user/ (including inside the repo).
 #
 # Source this file before running any cargo/rustc command:
 #
-#   . /home/user/forge/forgeCORE/scripts/env.sh
+#   . /home/user/forgeCORE/scripts/env.sh
 #
 # All Rust/Cargo state then lives under $FORGE_TOOLCHAIN_ROOT, which
 # defaults to /var/tmp/forge-toolchain (outside the workspace; /tmp is a small tmpfs here). Override it

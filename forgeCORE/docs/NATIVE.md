@@ -36,9 +36,9 @@ tar xzf cmake.tar.gz && rm cmake.tar.gz
 ## Quickstart
 
 ```sh
-. /home/user/forge/forgeCORE/scripts/env.sh
-sh /home/user/forge/forgeCORE/scripts/setup-native.sh   # clone (pinned) + CMake build
-cd /home/user/forge/forgeCORE && cargo test --workspace
+. /home/user/forgeCORE/scripts/env.sh
+sh /home/user/forgeCORE/scripts/setup-native.sh   # clone (pinned) + CMake build
+cd /home/user/forgeCORE && cargo test --workspace
 ```
 
 `setup-native.sh` clones `--depth 1 --branch v0.5.0`, verifies the

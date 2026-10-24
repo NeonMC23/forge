@@ -2,13 +2,10 @@
 
 ## Invariant
 
-The shared Git-free development workspace is `/home/user/forge/`.
-It contains `/home/user/forge/RAMforge/` and
-`/home/user/forge/forgeCORE/`. The protected external Git clones remain
-at `/home/user/RAMforge/` and `/home/user/forgeCORE/` and are user-managed.
+`/home/user/` must contain **only** `/home/user/forgeCORE/`.
 
-The shared source workspace itself must contain only source, documentation,
-manifests, tests, and intentional project files — never toolchain state or caches.
+The repository itself must contain only source, documentation, manifests,
+tests, and intentional project files — never toolchain state or caches.
 In particular, none of these may exist under `/home/user/` (including
 inside the repository):
 
@@ -46,7 +43,7 @@ This is configured by `scripts/env.sh`, which is the persistent record
 of this policy. **Source it before any cargo/rustc command:**
 
 ```sh
-. /home/user/forge/forgeCORE/scripts/env.sh
+. /home/user/forgeCORE/scripts/env.sh
 ```
 
 ## Installing the toolchain
