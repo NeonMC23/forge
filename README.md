@@ -40,8 +40,9 @@ engineering and publication policy.
 
 `gptneox` execution must be requested explicitly with `--backend forgecore`; the
 legacy path never falls back or approximates it. The 20B GPT-NeoX GGUF
-(13,135,032,320 B file, 13,133,230,080 tensor bytes) executed under a hard
-8 GiB cgroup v2 cap with `--enforce-ram --no-repack`: 7.65 GiB of the 12.23 GiB
+(13,135,032,320 B file, 13,133,230,080 tensor bytes, SHA-256
+`1a35c13535c26bb925a2379d9f021de67a0390124ffe2051aa94412002652d6d`) executed
+under a hard 8 GiB cgroup v2 cap with `--enforce-ram --no-repack`: 7.65 GiB of the 12.23 GiB
 mapping resident, 54,721 limit events, no OOM kill, one greedy token ` Paris`
 in 16.94 s. This is OS demand paging of the file-backed mapping, not a
 RAMforge per-layer staging engine; the loader still prefaults the whole file.
