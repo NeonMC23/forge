@@ -29,15 +29,35 @@ engineering and publication policy.
 - `FORGE_LLAMA_DIR` selects the native tree; see
   [forgeCORE/docs/NATIVE.md](forgeCORE/docs/NATIVE.md).
 
+## Current architecture coverage (2026-10-25)
+
+| Architecture | Legacy RAMforge executor | forgeCORE/libllama | Evidence |
+|---|---|---|---|
+| `llama` | yes | yes | SmolLM2-135M Q4_K_M |
+| `qwen2` | yes | yes | Qwen2.5-1.5B Q4_0 |
+| `gptneox` / `gpt_neox` | not-yet (explicit, actionable rejection) | yes | Pythia-70M-deduped Q8_0; native and independent NumPy parity |
+| `qwen3`, `qwen35`, `gemma`, `phi`, literal `mistral` | not-yet | not-yet | inspect/plan only |
+
+`gptneox` execution must be requested explicitly with `--backend forgecore`; the
+legacy path never falls back or approximates it. The real 20B GPT-NeoX GGUF is
+inspect/plan-only and was not run: forgeCORE loads weights eagerly, does not
+enforce RAM budgets, and the host has 15.39 GiB RAM. See
+[RAMforge/README.md](RAMforge/README.md#architecture-and-quantization-matrix)
+for the full architecture/quantization matrices and the measured budget table.
+
 ## Current validation entry points
 
 ```sh
 cd forgeCORE
 FORGE_LLAMA_DIR="$PWD/../native" cargo test --workspace --locked
+FORGE_GPTNEOX_MODEL=/path/to/pythia-70m.Q8_0.gguf \
+  cargo test -p forge-core --test gptneox_execution --locked -- --ignored --nocapture
 
 cd ../RAMforge
 scripts/test.sh --workspace --locked
 scripts/smoke-real-models.sh --no-build
+RAMFORGE_GPTNEOX_MODEL=/path/to/pythia-70m.Q8_0.gguf \
+  scripts/smoke-real-models.sh --no-build --include-gptneox --matrix
 ```
 
 The smoke runner executes the two real models in `models/` sequentially, each
