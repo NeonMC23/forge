@@ -4,12 +4,14 @@ This directory is the shared development workspace for RAMforge and forgeCORE. B
 
 ## Source and Git boundary
 
-- Arena edits source files directly in this Git-free workspace:
-  - `RAMforge/`
-  - `forgeCORE/`
-- Git operations are user-controlled and are performed manually and infrequently in separate external clones.
-- Arena must never perform commits, pushes, pulls, branch changes, resets, rebases, merges, checkouts, fetches, or any other Git history, index, branch, or worktree operation.
-- Arena must never claim that work has been committed, pushed, or synchronized with a remote.
+- The active workspace is `/home/neon/Documents/CODE LOCAL/forge/`:
+  - `RAMforge/` is its own Git repository (`NeonMC23/RAMforge`).
+  - `forgeCORE/` is its own Git repository (`NeonMC23/forgeCORE`).
+  - the workspace root is its own Git repository (`NeonMC23/forge`).
+- Local engineering changes, builds, tests, and logical local commits are permitted.
+- Pushes to GitHub require explicit user approval for that push. Do not push, fetch, pull, or otherwise contact a remote without that approval.
+- Do not change branches, reset history, rebase, force-push, or perform destructive Git operations.
+- The workspace root must not track nested `.git/` metadata, native source/build trees, models, caches, or build outputs.
 - Before each implementation task, inspect the current state of both projects, review recent changes, identify regressions and cross-project compatibility issues, and do not rely on stale assumptions.
 - After each change, report exactly which files changed and why, the checks that were run and their real outcomes, unresolved risks, and commands the user may choose to run manually.
 - Do not change dependency pins or native-library revisions without explicit technical justification and user approval.

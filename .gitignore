@@ -1,13 +1,13 @@
-# Shared Cargo build artifacts
-/target/
+# Cargo build artifacts in the workspace and nested repositories
+target/
 
 # Local models
-/models/
+models/
 *.gguf
 *.bin
 
 # Runtime logs
-/logs/
+logs/
 *.log
 *.log.*
 
@@ -16,7 +16,8 @@
 RAMforge/.git/
 forgeCORE/.git/
 
-# Native build artifacts
+# Native llama.cpp/ggml checkout and build artifacts (external dependency)
+/native/src/
 /native/build/
 
 # Temporary files
