@@ -5,6 +5,8 @@ target/
 models/
 *.gguf
 *.bin
+__pycache__/
+*.pyc
 
 # Runtime logs
 logs/
