@@ -25,12 +25,14 @@
 //! `MemoryBudget`. It does NOT include total process RSS or OS page cache.
 
 pub mod cache;
+pub mod chat_template;
 pub mod compute;
 pub mod datasource;
 pub mod error;
 pub mod gguf;
 pub mod memory;
 pub mod model;
+pub mod model_set;
 pub mod quant;
 pub mod resource;
 pub mod tensor;
@@ -38,12 +40,14 @@ pub mod tokenizer;
 pub mod types;
 
 pub use cache::{BoundedCache, CacheStats};
+pub use chat_template::{ChatMessage, ChatTemplate, ChatTemplateError};
 pub use compute::{AttentionConfig, ComputeError, MatrixShape};
 pub use datasource::GgufDataSource;
 pub use error::{CacheError, DataSourceError, GgufError, MemoryError, ParseSizeError, Result};
 pub use gguf::parse_gguf_file;
 pub use memory::{parse_memory_size, MemoryBudget};
 pub use model::{GgufModel, ModelInfo, TensorDescriptor};
+pub use model_set::{discover_model_set, GgufModelSet, GgufShardLayout};
 pub use quant::{
     BlockQ2K, BlockQ3K, BlockQ4K, BlockQ4_0, BlockQ5K, BlockQ6K, BlockQ8K, BlockQ8_0,
     BLOCK_SIZE_Q2_K, BLOCK_SIZE_Q3_K, BLOCK_SIZE_Q4_0, BLOCK_SIZE_Q4_K, BLOCK_SIZE_Q5_K,
