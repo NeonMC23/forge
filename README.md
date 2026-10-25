@@ -56,9 +56,11 @@ released 25.12 MiB with shared pages skipped, and the 20B layer 0 submitted
 nonresident under the 8 GiB cap. A two-model fixture test released only the
 target mapping (`A 8192->0, B 8192->8192`).
 
-RAMforge now has an execution-aware residency engine:
-`--residency-policy off|observe|active`, soft target/reserve, structured
-report, inventory, deterministic planning, admission, and lifecycle guards.
+RAMforge now has a graph-aware residency engine:
+`--residency-policy off|observe|conservative|memory-bound|reuse-aware|active`,
+a unified model-scoped memory ledger with provenance and reconciliation,
+in-memory execution profiles, deterministic planning, admission, bounded
+deduplicated staging, versioned JSON operation reports, and lifecycle guards.
 It releases only after the context is dropped at a safe boundary; it has no
 intra-decode eviction. Qwen2.5-1.5B at 1 GiB with active target 512M submitted
 514.44 MiB and observed mapping RSS `855.68 -> 476.57 MiB` and process RSS
@@ -71,7 +73,18 @@ bounded `MADV_WILLNEED` staging, and a capability report. Qwen trace with a
 958 nodes/1,050 resources, known graph edges, and 1,050 graph-order last uses;
 `intra_decode_safe=false`. A 128M staging request selected 95 tensors and
 submitted 127.72 MiB, but mapping RSS remained `0 -> 0`; prefetch is a hint,
-not residency. The 4G/1G/100M 20B cases were not run. See
+not residency. On SmolLM2-135M Q4_K_M at a 128 MiB soft target (4 greedy
+tokens, CPU, 2 runs), memory-bound submitted 38,027,264 B and observed mapping
+RSS `-38,027,264 B` and process RSS about `163.8 -> 127.5 MiB`; reuse-aware
+used a complete 16,384-event profile, submitted 46,702,592 B, and observed
+`171.8 -> 127.3 MiB`. Cgroup current did not move because it is whole-cgroup
+accounting. Conservative selected nothing because every aligned tensor range
+had shared page bytes. `conservative`, `memory-bound`, `reuse-aware`, JSON
+reports, and the benchmark harness are documented in
+[RAMforge/docs/handoff/MEMORY_ACCOUNTING.md](RAMforge/docs/handoff/MEMORY_ACCOUNTING.md),
+[RAMforge/docs/handoff/GRAPH_SAFETY.md](RAMforge/docs/handoff/GRAPH_SAFETY.md),
+and [RAMforge/docs/handoff/BENCHMARKS.md](RAMforge/docs/handoff/BENCHMARKS.md).
+The 4G/1G/100M 20B cases were not run. See
 [RAMforge/README.md](RAMforge/README.md#enforced-host-memory-budgets-cgroup-v2)
 for the enforced matrix, performance, and limitations.
 
