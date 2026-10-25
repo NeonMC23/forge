@@ -45,9 +45,13 @@ legacy path never falls back or approximates it. The 20B GPT-NeoX GGUF
 under a hard 8 GiB cgroup v2 cap with `--enforce-ram --no-repack --no-prefetch`:
 7.64 GiB of the 12.23 GiB mapping resident, 7,979 limit events, no OOM kill,
 one greedy token ` Paris` in 7.72 s. The same run with prefetching took 16.94 s.
-The opt-in no-prefetch mode avoids `MAP_POPULATE` via a documented 9-line
-native patch; it is still OS demand paging, not a RAMforge per-layer staging
-engine. The 4G/1G/100M 20B cases were not run. See
+The opt-in no-prefetch mode avoids `MAP_POPULATE` via a documented native
+patch; it is still OS demand paging, not a RAMforge per-layer staging engine.
+The same patch adds model-scoped `llama_model_release_pages()` and RAMforge
+`--release-mapping-pages`; on the 20B prefetch run it released 7.93 GiB to 0,
+and decode still produced ` Paris`. A two-model fixture test released only the
+target mapping (`A 8192->0, B 8192->8192`). The 4G/1G/100M 20B cases were not
+run. See
 [RAMforge/README.md](RAMforge/README.md#enforced-host-memory-budgets-cgroup-v2)
 for the enforced matrix, performance, and limitations.
 
