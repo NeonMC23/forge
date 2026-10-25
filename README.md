@@ -54,8 +54,17 @@ metadata and `--inspect-layer`/`--release-layer`: Qwen2.5-1.5B layer 0
 released 25.12 MiB with shared pages skipped, and the 20B layer 0 submitted
 293.93 MiB but showed no RSS drop because those pages were already
 nonresident under the 8 GiB cap. A two-model fixture test released only the
-target mapping (`A 8192->0, B 8192->8192`). The 4G/1G/100M 20B cases were not
-run. See
+target mapping (`A 8192->0, B 8192->8192`).
+
+RAMforge now has an execution-aware residency engine:
+`--residency-policy off|observe|active`, soft target/reserve, structured
+report, inventory, deterministic planning, admission, and lifecycle guards.
+It releases only after the context is dropped at a safe boundary; it has no
+intra-decode eviction. Qwen2.5-1.5B at 1 GiB with active target 512M submitted
+514.44 MiB and observed mapping RSS `855.68 -> 476.57 MiB` and process RSS
+`1021.21 -> 642.10 MiB`; the soft target was still not met (observed 642.10
+MiB), and cgroup peak remained 1 GiB. Observe mode performed no mutation.
+The 4G/1G/100M 20B cases were not run. See
 [RAMforge/README.md](RAMforge/README.md#enforced-host-memory-budgets-cgroup-v2)
 for the enforced matrix, performance, and limitations.
 
