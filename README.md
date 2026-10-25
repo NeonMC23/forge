@@ -49,7 +49,11 @@ The opt-in no-prefetch mode avoids `MAP_POPULATE` via a documented native
 patch; it is still OS demand paging, not a RAMforge per-layer staging engine.
 The same patch adds model-scoped `llama_model_release_pages()` and RAMforge
 `--release-mapping-pages`; on the 20B prefetch run it released 7.93 GiB to 0,
-and decode still produced ` Paris`. A two-model fixture test released only the
+and decode still produced ` Paris`. It also adds exact tensor-to-mapping
+metadata and `--inspect-layer`/`--release-layer`: Qwen2.5-1.5B layer 0
+released 25.12 MiB with shared pages skipped, and the 20B layer 0 submitted
+293.93 MiB but showed no RSS drop because those pages were already
+nonresident under the 8 GiB cap. A two-model fixture test released only the
 target mapping (`A 8192->0, B 8192->8192`). The 4G/1G/100M 20B cases were not
 run. See
 [RAMforge/README.md](RAMforge/README.md#enforced-host-memory-budgets-cgroup-v2)
