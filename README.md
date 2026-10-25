@@ -64,7 +64,14 @@ intra-decode eviction. Qwen2.5-1.5B at 1 GiB with active target 512M submitted
 514.44 MiB and observed mapping RSS `855.68 -> 476.57 MiB` and process RSS
 `1021.21 -> 642.10 MiB`; the soft target was still not met (observed 642.10
 MiB), and cgroup peak remained 1 GiB. Observe mode performed no mutation.
-The 4G/1G/100M 20B cases were not run. See
+
+The engine also has an opt-in bounded scheduler graph trace and manifest,
+bounded `MADV_WILLNEED` staging, and a capability report. Qwen trace with a
+4096-event budget retained 958 requested/958 synchronized completions,
+958 nodes/1,050 resources, known graph edges, and 1,050 graph-order last uses;
+`intra_decode_safe=false`. A 128M staging request selected 95 tensors and
+submitted 127.72 MiB, but mapping RSS remained `0 -> 0`; prefetch is a hint,
+not residency. The 4G/1G/100M 20B cases were not run. See
 [RAMforge/README.md](RAMforge/README.md#enforced-host-memory-budgets-cgroup-v2)
 for the enforced matrix, performance, and limitations.
 
