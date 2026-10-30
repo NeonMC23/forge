@@ -83,8 +83,11 @@ confidence thresholds; they never authorize release. Feedback history is
 validated and atomic, and `ramforge simulate` provides a deterministic
 simulation-only comparison. A five-arm, four-workload benchmark harness with
 rotated order, page-fault/RSS/cgroup reporting, and uncontrolled-cache labeling
-found no mapping/RSS reduction and no universal speedup; a 256 MiB cgroup run
-showed fewer major faults on some workloads but mixed long-workload results.
+found no mapping/RSS reduction and no universal speedup; end-to-end timing
+includes prediction/staging/setup, and a 256 MiB cgroup run showed lower TTFT
+but worse end-to-end latency on short workloads. Bounded Linux `mincore()`
+observation found all selected prefetch pages already resident and full-page
+observation cost about 158 ms per run, so that prefetch was redundant.
 See [RAMforge/docs/handoff/PREDICTION.md](RAMforge/docs/handoff/PREDICTION.md)
 and [RAMforge/docs/handoff/BENCHMARKS.md](RAMforge/docs/handoff/BENCHMARKS.md).
 
