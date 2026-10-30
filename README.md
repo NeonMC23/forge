@@ -82,12 +82,16 @@ profiles. Predictions are bounded by window/speculative budgets, admission, and
 confidence thresholds; they never authorize release. Feedback history is
 validated and atomic, and `ramforge simulate` provides a deterministic
 simulation-only comparison. A five-arm, four-workload benchmark harness with
-rotated order, page-fault/RSS/cgroup reporting, and uncontrolled-cache labeling
-found no mapping/RSS reduction and no universal speedup; end-to-end timing
-includes prediction/staging/setup, and a 256 MiB cgroup run showed lower TTFT
-but worse end-to-end latency on short workloads. Bounded Linux `mincore()`
-observation found all selected prefetch pages already resident and full-page
-observation cost about 158 ms per run, so that prefetch was redundant.
+rotated order, page-fault/RSS/cgroup reporting, and an isolated-copy
+controlled-cache mode found no mapping/RSS reduction and no universal speedup;
+end-to-end timing includes prediction/staging/setup, and a 256 MiB cgroup run
+showed lower TTFT but worse end-to-end latency on short workloads. Linux
+`mincore()` observation now samples selected prefetch resources first, reports
+partial selected/general coverage separately, and labels unknown pages. A safe
+`POSIX_FADV_DONTNEED` experiment is applied only to an isolated model copy and
+verified with `mincore`; warm, controlled, and preparation-failure states stay
+distinct. Before-access residency remains unavailable, so eviction-before-use
+and causal benefit stay unknown.
 See [RAMforge/docs/handoff/PREDICTION.md](RAMforge/docs/handoff/PREDICTION.md)
 and [RAMforge/docs/handoff/BENCHMARKS.md](RAMforge/docs/handoff/BENCHMARKS.md).
 
