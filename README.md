@@ -77,6 +77,13 @@ machine, and only marks resources release-eligible after the operation boundary
 is observed quiescent. This is still between-operation physical page control,
 not intra-decode eviction.
 
+RAMforge also exposes an opt-in CPU node-dispatch observer through forgeCORE.
+It emits one event from worker 0 before each non-empty, compute-enabled node,
+with model/context/execution identity, node/op/source names, bounded storage,
+and drop accounting. It is dispatch-start evidence only: not a tensor read,
+page fault, I/O, completion, residency proof, or release authorization. See
+[RAMforge/docs/handoff/GRAPH_SAFETY.md](RAMforge/docs/handoff/GRAPH_SAFETY.md).
+
 RAMforge also has a deterministic predictive staging layer over validated
 profiles. Predictions are bounded by window/speculative budgets, admission, and
 confidence thresholds; they never authorize release. Feedback history is
