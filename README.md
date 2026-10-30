@@ -81,8 +81,12 @@ RAMforge also has a deterministic predictive staging layer over validated
 profiles. Predictions are bounded by window/speculative budgets, admission, and
 confidence thresholds; they never authorize release. Feedback history is
 validated and atomic, and `ramforge simulate` provides a deterministic
-simulation-only comparison. See
-[RAMforge/docs/handoff/PREDICTION.md](RAMforge/docs/handoff/PREDICTION.md).
+simulation-only comparison. A five-arm, four-workload benchmark harness with
+rotated order, page-fault/RSS/cgroup reporting, and uncontrolled-cache labeling
+found no mapping/RSS reduction and no universal speedup; a 256 MiB cgroup run
+showed fewer major faults on some workloads but mixed long-workload results.
+See [RAMforge/docs/handoff/PREDICTION.md](RAMforge/docs/handoff/PREDICTION.md)
+and [RAMforge/docs/handoff/BENCHMARKS.md](RAMforge/docs/handoff/BENCHMARKS.md).
 
 It also has an opt-in bounded scheduler graph trace and manifest,
 bounded `MADV_WILLNEED` staging, and a capability report. Qwen trace with a
