@@ -80,8 +80,11 @@ not intra-decode eviction.
 RAMforge also exposes an opt-in CPU node-dispatch observer through forgeCORE.
 It emits one event from worker 0 before each non-empty, compute-enabled node,
 with model/context/execution identity, node/op/source names, bounded storage,
-and drop accounting. It is dispatch-start evidence only: not a tensor read,
-page fault, I/O, completion, residency proof, or release authorization. See
+and drop accounting. Native tensor metadata now includes model-generation-
+scoped mapping identity and validated page ranges, and opt-in bounded Linux
+`mincore()` sampling can run before dispatch. Dispatch and sampling are
+observations only: not a tensor read, page fault, I/O, completion, residency
+during execution, or release authorization. See
 [RAMforge/docs/handoff/GRAPH_SAFETY.md](RAMforge/docs/handoff/GRAPH_SAFETY.md).
 
 RAMforge also has a deterministic predictive staging layer over validated
