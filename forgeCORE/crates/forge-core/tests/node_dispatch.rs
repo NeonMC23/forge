@@ -249,7 +249,7 @@ fn execution_budget_is_strict_and_reports_unsampled_pages() {
     assert!(events
         .iter()
         .filter_map(|event| event.dispatch_sample)
-        .any(|sample| sample.unsampled_pages > 0));
+        .any(|sample| sample.budget_excluded_pages > 0));
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn sampling_strategies_have_distinct_cache_behavior() {
         context
             .set_dispatch_observer(Some(NodeDispatchOptions {
                 max_events: 4096,
-                sample_pages: 4096,
+                sample_pages: 64,
                 sample_budget: 4096,
                 strategy,
                 cache_capacity: 256,
@@ -345,4 +345,143 @@ fn dispatch_options_are_bounded() {
             ..NodeDispatchOptions::default()
         }))
         .is_err());
+}
+
+#[test]
+fn dispatch_attribution_invariants_hold_on_a_real_model() {
+    let Some(path) = fixture() else {
+        eprintln!("SKIP: FORGE_TEST_MODEL not set");
+        return;
+    };
+    let model = Model::load(&path).expect("model");
+    let mut context = Context::open(&model, &ContextOptions::default()).expect("context");
+    context
+        .set_dispatch_observer(Some(NodeDispatchOptions {
+            max_events: 4096,
+            sample_pages: 32,
+            sample_budget: 512,
+            strategy: NodeSamplingStrategy::Targeted,
+            cache_capacity: 128,
+            cache_ttl_events: 64,
+        }))
+        .expect("observer");
+    context.decode(&tiny_batch()).expect("decode");
+    let events = context.dispatch_events();
+    let mut saw_sample = false;
+    let mut execution_fresh: std::collections::BTreeMap<u64, u64> =
+        std::collections::BTreeMap::new();
+    for event in &events {
+        let Some(sample) = event.dispatch_sample else {
+            continue;
+        };
+        saw_sample = true;
+        assert_eq!(
+            sample.requested_pages,
+            sample.sampled_pages
+                + sample.skipped_pages
+                + sample.budget_excluded_pages
+                + sample.unsampled_pages,
+            "global page accounting must be exact: {sample:?}"
+        );
+        assert_eq!(
+            sample.sampled_pages,
+            sample.resident_pages + sample.nonresident_pages + sample.unknown_pages,
+            "global observed states must be exact: {sample:?}"
+        );
+        assert!(sample.budget_excluded_pages <= sample.requested_pages);
+        let mut referenced = 0u64;
+        for source in &event.source_samples {
+            referenced = referenced.saturating_add(source.requested_pages);
+            assert_eq!(
+                source.requested_pages,
+                source.exclusive_pages + source.shared_pages,
+                "source range accounting must be exact: {source:?}"
+            );
+            assert_eq!(
+                source.requested_pages,
+                source.sampled_pages
+                    + source.skipped_pages
+                    + source.budget_excluded_pages
+                    + source.unsampled_pages,
+                "source page accounting must be exact: {source:?}"
+            );
+            assert_eq!(
+                source.sampled_pages,
+                source.resident_pages + source.nonresident_pages + source.unknown_pages,
+                "source observed states must be exact: {source:?}"
+            );
+            assert_eq!(
+                source.fresh_pages + source.reused_pages,
+                source.sampled_pages
+            );
+            assert!(source.shared_pages <= source.requested_pages);
+            assert!(source.sampled_pages <= source.requested_pages);
+        }
+        assert!(
+            referenced >= sample.requested_pages,
+            "source references cannot be fewer than unique pages"
+        );
+        *execution_fresh.entry(event.execution_sequence).or_default() += sample.fresh_sampled_pages;
+    }
+    assert!(saw_sample, "expected at least one sampled dispatch");
+    for (execution, fresh) in execution_fresh {
+        assert!(
+            fresh <= 512,
+            "execution {execution} exceeded fresh budget: {fresh}"
+        );
+    }
+}
+
+#[test]
+fn cache_capacity_is_bounded_and_evictions_are_counted() {
+    let Some(path) = fixture() else {
+        eprintln!("SKIP: FORGE_TEST_MODEL not set");
+        return;
+    };
+    let model = Model::load(&path).expect("model");
+    let mut context = Context::open(&model, &ContextOptions::default()).expect("context");
+    context
+        .set_dispatch_observer(Some(NodeDispatchOptions {
+            max_events: 4096,
+            sample_pages: 64,
+            sample_budget: 4096,
+            strategy: NodeSamplingStrategy::Adaptive,
+            cache_capacity: 1,
+            cache_ttl_events: 1024,
+        }))
+        .expect("observer");
+    context.decode(&batch_at(0)).expect("first decode");
+    let first = context.dispatch_summary().expect("summary");
+    context.decode(&batch_at(4)).expect("second decode");
+    let second = context.dispatch_summary().expect("summary");
+    assert!(
+        second.cache_evictions > first.cache_evictions,
+        "capacity-one cache must evict: first={first:?} second={second:?}"
+    );
+    assert!(second.cache_reuses <= second.events);
+}
+
+#[test]
+fn zero_cache_capacity_disables_reuse_and_eviction() {
+    let Some(path) = fixture() else {
+        eprintln!("SKIP: FORGE_TEST_MODEL not set");
+        return;
+    };
+    let model = Model::load(&path).expect("model");
+    let mut context = Context::open(&model, &ContextOptions::default()).expect("context");
+    context
+        .set_dispatch_observer(Some(NodeDispatchOptions {
+            max_events: 4096,
+            sample_pages: 64,
+            sample_budget: 4096,
+            strategy: NodeSamplingStrategy::Adaptive,
+            cache_capacity: 0,
+            cache_ttl_events: 1024,
+        }))
+        .expect("observer");
+    context.decode(&batch_at(0)).expect("first decode");
+    context.decode(&batch_at(4)).expect("second decode");
+    let summary = context.dispatch_summary().expect("summary");
+    assert_eq!(summary.cache_reuses, 0);
+    assert_eq!(summary.cache_evictions, 0);
 }
