@@ -69,8 +69,29 @@ changes.
 - Concurrent experiments use distinct files and mappings.
 - Invalid or missing mappings return an observation error, not a false
   nonresident count.
+- Native page states distinguish resident, nonresident, unknown, and failed;
+  a `mincore()` chunk failure is reported as failed pages, not unknown or
+  nonresident.
 - tmpfs remains explicitly non-transitional where the kernel cannot satisfy
   the eviction request.
+
+## Isolated model-mapping experiment
+
+`mapping_ranges.rs` contains an ignored experiment that:
+
+1. copies `FORGE_TEST_MODEL` to a unique temporary file;
+2. loads the copy with prefetch;
+3. samples a file-backed tensor range;
+4. drops the model mapping;
+5. issues a file-scoped `POSIX_FADV_DONTNEED` request on the copy;
+6. reloads with `MmapNoPrefetch`;
+7. samples the same range again.
+
+The experiment is safe because it never modifies the original model, never
+drops global cache, and never targets any other file. On the development
+machine the sampled pages remained resident after the advisory request, so no
+model-mapping transition is claimed. The test verifies accounting consistency,
+mapping-generation replacement, and the absence of a false claim.
 
 ## Limitations
 
@@ -80,3 +101,8 @@ changes.
   metadata or inference kernels.
 - Mapping disappearance is not interpreted as nonresidency; callers must not
   sample a released mapping.
+- The model-mapping copy experiment did not observe a resident-to-nonresident
+  transition on the development machine. It validates the safe attempt and
+  explicit non-claim, not a successful physical transition.
+- File-scoped success on `/var/tmp` does not imply that model mappings can be
+  evicted by the same request.
