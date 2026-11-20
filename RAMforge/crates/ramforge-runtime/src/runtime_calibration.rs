@@ -12,6 +12,8 @@ use crate::runtime_measurement::{
 };
 
 pub const RUNTIME_CALIBRATION_SCHEMA_VERSION: u32 = 1;
+pub const KV_TYPE_SOURCE_ADAPTER_DEFAULT: &str =
+    "adapter default; native effective-type getter unavailable";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MachineIdentity {
@@ -20,6 +22,9 @@ pub struct MachineIdentity {
     pub cpu_model: Option<String>,
     pub physical_ram_bytes: Option<u64>,
     pub device_count: usize,
+    pub device_classes: Vec<String>,
+    pub os: String,
+    pub kernel: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +56,7 @@ pub struct RuntimeConfiguration {
     pub kv_type_v: String,
     pub kv_type_source: String,
     pub state_serialization_size_bytes: Option<u64>,
+    pub native_contract_version: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -116,6 +122,7 @@ pub struct CalibrationEvidence {
     pub batch_tokens: Option<u32>,
     pub backend: String,
     pub observed_runtime_overhead: RequirementBytes,
+    pub compatibility: crate::calibration_compatibility::CompatibilityClass,
     pub valid: bool,
     pub reason: Option<String>,
 }
@@ -127,6 +134,7 @@ impl CalibrationEvidence {
         plan: &crate::execution_candidate::ExecutionPlanCandidate,
     ) -> bool {
         self.valid
+            && self.compatibility == crate::calibration_compatibility::CompatibilityClass::Exact
             && self.model_fingerprint.is_some()
             && self.model_fingerprint == requirements.model_fingerprint
             && self.context_tokens == Some(plan.context_tokens)
@@ -139,6 +147,30 @@ fn plan_backend_label(backend: crate::execution_candidate::PlanBackend) -> Strin
     match backend {
         crate::execution_candidate::PlanBackend::Cpu => "cpu".to_string(),
         crate::execution_candidate::PlanBackend::Gpu => "gpu".to_string(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservationConditions {
+    pub cache_condition: String,
+    pub cache_condition_known: bool,
+    pub cgroup_limit_bytes: Observed<u64>,
+    pub pressure_class: String,
+    pub baseline_rss_bytes: Observed<u64>,
+    pub snapshot_count: usize,
+    pub missing_stages: Vec<String>,
+    pub measurement_complete: bool,
+}
+
+impl ObservationConditions {
+    pub fn validate(&self) -> Result<(), String> {
+        self.cgroup_limit_bytes
+            .validate()
+            .map_err(|e| e.to_string())?;
+        self.baseline_rss_bytes
+            .validate()
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 
@@ -155,6 +187,7 @@ pub struct RuntimeCalibration {
     pub deltas: LifecycleDeltas,
     pub comparisons: Vec<EstimateComparison>,
     pub attribution: RuntimeAttribution,
+    pub observation: ObservationConditions,
     pub limitations: Vec<String>,
 }
 
@@ -174,6 +207,7 @@ impl RuntimeCalibration {
         }
         self.predicted.validate()?;
         self.attribution.validate()?;
+        self.observation.validate()?;
         let mut previous = None;
         for snapshot in &self.snapshots {
             snapshot.validate()?;
@@ -208,29 +242,18 @@ impl RuntimeCalibration {
     /// and attributable enough to be applied conservatively.
     pub fn evidence(&self) -> CalibrationEvidence {
         let overhead = observed_runtime_overhead(&self.deltas, &self.predicted.kv_cache_bytes);
-        let comparable = self
-            .predicted
-            .model_fingerprint
-            .as_ref()
-            .is_some_and(|fingerprint| !fingerprint.is_empty())
-            && self.runtime.effective_context_tokens.is_some()
-            && overhead.bytes.is_some();
-        let reason = if comparable {
-            None
-        } else {
-            Some(
-                "calibration requires a model fingerprint, effective context, and observed runtime delta"
-                    .to_string(),
-            )
-        };
         CalibrationEvidence {
             model_fingerprint: self.predicted.model_fingerprint.clone(),
             context_tokens: self.runtime.effective_context_tokens,
             batch_tokens: self.runtime.requested_batch_tokens,
             backend: self.runtime.backend.clone(),
             observed_runtime_overhead: overhead,
-            valid: comparable,
-            reason,
+            compatibility:
+                crate::calibration_compatibility::CompatibilityClass::InsufficientEvidence,
+            valid: false,
+            reason: Some(
+                "evidence requires compatibility evaluation against a concrete target".to_string(),
+            ),
         }
     }
 }
@@ -330,6 +353,58 @@ pub fn build_attribution(
             "Model mapping residency is not tensor use.".to_string(),
             "RSS deltas are not component allocations.".to_string(),
         ],
+    }
+}
+
+fn observation_conditions(snapshots: &[RuntimeSnapshot]) -> ObservationConditions {
+    let required = [
+        LifecycleStage::Baseline,
+        LifecycleStage::ModelLoaded,
+        LifecycleStage::ContextCreated,
+        LifecycleStage::PromptProcessed,
+        LifecycleStage::DecodeSteady,
+        LifecycleStage::ContextDestroyed,
+        LifecycleStage::ModelUnloaded,
+        LifecycleStage::Final,
+    ];
+    let missing_stages: Vec<String> = required
+        .iter()
+        .filter(|stage| !snapshots.iter().any(|snapshot| snapshot.stage == **stage))
+        .map(|stage| format!("{stage:?}").to_ascii_lowercase())
+        .collect();
+    let last = snapshots.last();
+    let pressure_class = last
+        .and_then(|snapshot| snapshot.system.pressure.as_ref())
+        .map(|pressure| {
+            let some = pressure.some_avg10.unwrap_or(0);
+            if some <= 100 {
+                "low"
+            } else if some <= 500 {
+                "elevated"
+            } else {
+                "high"
+            }
+        })
+        .unwrap_or("unknown")
+        .to_string();
+    let baseline_rss = snapshots
+        .iter()
+        .find(|snapshot| snapshot.stage == LifecycleStage::Baseline)
+        .map(|snapshot| snapshot.process.rss_bytes.clone())
+        .unwrap_or_else(|| Observed::unavailable("baseline RSS unavailable", 0));
+    let cgroup_limit = last
+        .map(|snapshot| snapshot.system.cgroup_limit_bytes.clone())
+        .unwrap_or_else(|| Observed::unavailable("cgroup limit unavailable", 0));
+    let measurement_complete = missing_stages.is_empty();
+    ObservationConditions {
+        cache_condition: "warm-uncontrolled".to_string(),
+        cache_condition_known: true,
+        cgroup_limit_bytes: cgroup_limit,
+        pressure_class,
+        baseline_rss_bytes: baseline_rss,
+        snapshot_count: snapshots.len(),
+        missing_stages,
+        measurement_complete,
     }
 }
 
@@ -481,6 +556,7 @@ pub fn build_calibration(
                 .to_string(),
         ),
     ));
+    let observation = observation_conditions(&snapshots);
     RuntimeCalibration {
         schema_version: RUNTIME_CALIBRATION_SCHEMA_VERSION,
         observation_only: true,
@@ -493,6 +569,18 @@ pub fn build_calibration(
             cpu_model: machine.cpu.model.as_ref().cloned(),
             physical_ram_bytes: machine.memory.physical_total_bytes.as_ref().copied(),
             device_count: machine.devices.len(),
+            device_classes: {
+                let mut classes: Vec<String> = machine
+                    .devices
+                    .iter()
+                    .map(|device| device.kind.clone())
+                    .collect();
+                classes.sort();
+                classes.dedup();
+                classes
+            },
+            os: machine.os.clone(),
+            kernel: machine.kernel.clone(),
         },
         model: ModelIdentity {
             name: requirements.model_name.clone(),
@@ -508,6 +596,7 @@ pub fn build_calibration(
         deltas,
         comparisons,
         attribution,
+        observation,
         limitations: vec![
             "Lifecycle RSS deltas include page-cache, allocator, and backend effects.".to_string(),
             "KV cache and graph/backend allocations are not exactly attributable.".to_string(),
@@ -572,6 +661,7 @@ mod tests {
             kv_type_v: "f16".to_string(),
             kv_type_source: "adapter default; native getter unavailable".to_string(),
             state_serialization_size_bytes: None,
+            native_contract_version: Some(1),
         }
     }
 
@@ -609,7 +699,7 @@ mod tests {
     }
 
     #[test]
-    fn evidence_is_only_valid_for_compatible_configuration() {
+    fn unchecked_evidence_is_not_applicable() {
         let machine = collect_machine_profile(&MachineProfileConfig::default());
         let calibration = build_calibration(
             &machine,
@@ -619,7 +709,7 @@ mod tests {
             attribution(),
         );
         let evidence = calibration.evidence();
-        assert!(evidence.valid);
+        assert!(!evidence.valid);
         let requirements = requirements();
         let mut plan = crate::execution_candidate::ExecutionPlanCandidate {
             schema_version: crate::execution_candidate::EXECUTION_CANDIDATE_SCHEMA_VERSION,
@@ -636,7 +726,7 @@ mod tests {
             assumptions: Vec::new(),
             unknown_information: Vec::new(),
         };
-        assert!(evidence.is_comparable(&requirements, &plan));
+        assert!(!evidence.is_comparable(&requirements, &plan));
         plan.context_tokens = 256;
         assert!(!evidence.is_comparable(&requirements, &plan));
     }
