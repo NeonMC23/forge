@@ -154,54 +154,48 @@ paging rather than tensor/layer streaming. No GPU backend was built or
 validated. See
 [RAMforge/docs/handoff/LARGE_MODEL_EXECUTION.md](RAMforge/docs/handoff/LARGE_MODEL_EXECUTION.md).
 
-### GPU execution readiness (2026-11-21)
+### CUDA execution validated (2026-11-21)
 
-The physical machine contains an NVIDIA GeForce RTX 3050 Laptop GPU (GA107M,
-PCI `0000:01:00.0`), but CUDA execution is not available:
+The reference RTX 3050 Laptop GPU (GA107M, SM 86, 4 GiB VRAM) now executes
+models through a real CUDA-enabled native backend.
 
-- The loaded NVIDIA kernel module is `595.112.07` while userspace `libcuda`
-  and NVML are `620.70.06`; `nvidia-smi` fails with a driver/library version
-  mismatch. This is consistent with a reboot-pending update.
-- No CUDA compiler or development headers are installed (`nvcc` absent; the
-  `cuda` package contains documentation only).
-- The native build remains CPU-only: `GGML_CUDA`, Vulkan, SYCL, OpenCL, Metal,
-  RPC, and dynamic backend loading are all OFF. The registered backend list is
-  `CPU` with one device.
+- Driver/NVML 620.70.06, CUDA toolkit 13.2.51, host compiler `g++-15`.
+- Build: `native/build-cuda`; `libggml-cuda.so.0.25.1` contains SM 86 cubins
+  and exports `ggml_backend_cuda_reg`.
+- Runtime: `registered_backends()` returns CUDA (1 device) and CPU (1 device);
+  CUDA0 reports 3,974,103,040 bytes total VRAM.
+- Physical inference succeeded with CPU, hybrid, and full-GPU placement on
+  SmolLM2-135M Q4_K_M (30 transformer layers).
+- Native readback: 8 requested -> 8 effective (7 transformer + output); 31
+  requested -> 31 effective (30 transformer + output). Upstream counts the
+  output layer in `n_gpu_layers`.
+- Release benchmark (32 generated tokens, same workload): CPU 240.70 tok/s,
+  hybrid 289.13, full GPU 484.65. A reverse-order session measured 249.62 /
+  309.53 / 488.89 and preserved the ordering.
+- VRAM after warmup: about 178 MiB for full offload, 113 MiB for hybrid.
+  Unload returns near baseline with about 12.6 MiB retained.
+- GPU cancellation, repeated sessions, unload, and VRAM release were exercised.
+- GPU load/placement failure is explicit; there is no silent CPU fallback.
+- CPU execution remains functional with the CUDA build and with the CPU-only
+  build.
 
-No CUDA build, GPU inference, hybrid run, VRAM measurement, or GPU benchmark is
-claimed. Details and the safe follow-up procedure are in
-[RAMforge/docs/handoff/GPU_ENVIRONMENT.md](RAMforge/docs/handoff/GPU_ENVIRONMENT.md).
-
-Exact recovery proposal (not executed): reboot to load the installed 620.70.06
-kernel module, then install `cuda-devel cuda-gcc gcc15-c++` from
-`nobara-nvidia-production` (CUDA 13.2, GCC 15 host compiler). A guarded
-`forgeCORE/scripts/setup-native-cuda.sh` and
-`FORGE_LLAMA_BUILD_DIR=build-cuda` preserve the CPU build and the native pin.
-The script refuses to run while `nvidia-smi` or `nvcc` is unusable.
-
-What was implemented instead:
-
-- forgeCORE `registered_backends()` reports backend names and device counts.
-- A narrow native read-only patch exposes effective layer/output placement
-  (`llama_model_effective_gpu_layers`, `llama_model_layer_device_type`,
-  `llama_model_output_device_type`). CPU loads report zero GPU layers.
-- RAMforge machine profiles include backend inventory, GPU availability, and
-  device total/free memory. `execution_readiness` states CPU/GPU capability.
-- `RuntimePlan` schema 2 represents CPU/GPU/hybrid modes and requested/effective
-  GPU layers. GPU requests fail explicitly when no backend/device is registered;
-  non-CPU plans are rejected by the service with no silent CPU fallback.
-- CPU regression remains green: 617 RAMforge tests passed, 30 ignored; 415
-  forgeCORE tests passed, 9 ignored. Latest release matrix: balanced 8 threads
-  223.04 tok/s (P25–P75 218.94–224.91), maximum-performance 4 threads repacked
-  205.25, balanced 4 threads 203.92, background 81.44. Earlier sessions measured
-  about 25% higher absolute rates, and a final spot check reversed the 4/8
-  ranking (229.50 vs 219.91); no reliable 4-vs-8 winner is claimed.
+CPU/GPU greedy text can diverge after the shared prefix due to quantized
+accumulation order. Transfer volume, transfer time, GPU utilization, MoE, and
+tensor/layer streaming were not instrumented or implemented. Details:
+[RAMforge/docs/handoff/GPU_ENVIRONMENT.md](RAMforge/docs/handoff/GPU_ENVIRONMENT.md)
+and [RAMforge/docs/handoff/BENCHMARKS.md](RAMforge/docs/handoff/BENCHMARKS.md).
 
 ## Current validation entry points
 
 ```sh
 cd forgeCORE
 FORGE_LLAMA_DIR="$PWD/../native" cargo test --workspace --locked
+
+# CUDA build
+export FORGE_LLAMA_DIR="$PWD/../native"
+export FORGE_LLAMA_BUILD_DIR=build-cuda
+export LD_LIBRARY_PATH="$FORGE_LLAMA_DIR/build-cuda/bin"
+cargo test --workspace --locked
 FORGE_GPTNEOX_MODEL=/path/to/pythia-70m.Q8_0.gguf \
   cargo test -p forge-core --test gptneox_execution --locked -- --ignored --nocapture
 

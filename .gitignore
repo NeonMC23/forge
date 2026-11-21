@@ -21,6 +21,7 @@ forgeCORE/.git/
 # Native llama.cpp/ggml checkout and build artifacts (external dependency)
 /native/src/
 /native/build/
+/native/build-cuda/
 
 # Temporary files
 *.tmp
