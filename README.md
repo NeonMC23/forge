@@ -189,6 +189,15 @@ models through a real CUDA-enabled native backend.
 - A conservative Qwen2.5-7B Q4_K_M hybrid run (12 layers, 256 context) loaded
   in 2.90 s and generated coherent tokens at 9.30 tok/s, with 2.02 GB of CUDA0
   model buffer, 2.66 GB CPU-mapped model, and 2.30 GB device used.
+- Read-only tensor storage introspection identifies every model tensor's
+  buffer, device, layer, quantization, file-backed state, and bytes. SmolLM2
+  exposes 273 tensors in 2 model buffers; layer 0 is 2,596,608 bytes.
+- Controlled staging investigation: measured pinned H2D 6.30 GB/s, pageable
+  5.10 GB/s, direct NVMe 1.3–1.8 GB/s. Dense per-token staging is not viable at
+  these limits. Graph/scheduler and model-buffer ownership lack per-layer
+  allocation/release and boundary hooks. Decision: **READY AFTER SPECIFIC
+  NATIVE PRIMITIVES**. See
+  [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
 accumulation order. Transfer volume, transfer time, GPU utilization, MoE, and
