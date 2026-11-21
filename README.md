@@ -177,7 +177,18 @@ models through a real CUDA-enabled native backend.
 - GPU cancellation, repeated sessions, unload, and VRAM release were exercised.
 - GPU load/placement failure is explicit; there is no silent CPU fallback.
 - CPU execution remains functional with the CUDA build and with the CPU-only
-  build.
+  build. CPU plans explicitly pin the CPU device and allocate no CUDA buffer.
+- Native GPU memory observability exposes per-buffer model/KV/compute totals,
+  device total/free/used, sampling timestamps, and explicit unsupported
+  counters. Full GPU: CUDA0 model 103,739,904 B, KV 5,898,240 B, compute
+  50,921,472 B; hybrid: CUDA0 model 46,928,640 B, KV 1,376,256 B, compute
+  50,921,472 B.
+- Allocation/deallocation event counters, transfer bytes/duration, peak VRAM,
+  process attribution, and synchronization duration remain unsupported.
+- Observability sampling costs about 53 µs per snapshot.
+- A conservative Qwen2.5-7B Q4_K_M hybrid run (12 layers, 256 context) loaded
+  in 2.90 s and generated coherent tokens at 9.30 tok/s, with 2.02 GB of CUDA0
+  model buffer, 2.66 GB CPU-mapped model, and 2.30 GB device used.
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
 accumulation order. Transfer volume, transfer time, GPU utilization, MoE, and
