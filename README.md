@@ -154,6 +154,41 @@ paging rather than tensor/layer streaming. No GPU backend was built or
 validated. See
 [RAMforge/docs/handoff/LARGE_MODEL_EXECUTION.md](RAMforge/docs/handoff/LARGE_MODEL_EXECUTION.md).
 
+### GPU execution readiness (2026-11-21)
+
+The physical machine contains an NVIDIA GeForce RTX 3050 Laptop GPU (GA107M,
+PCI `0000:01:00.0`), but CUDA execution is not available:
+
+- The loaded NVIDIA kernel module is `595.112.07` while userspace `libcuda`
+  and NVML are `620.70.06`; `nvidia-smi` fails with a driver/library version
+  mismatch. This is consistent with a reboot-pending update.
+- No CUDA compiler or development headers are installed (`nvcc` absent; the
+  `cuda` package contains documentation only).
+- The native build remains CPU-only: `GGML_CUDA`, Vulkan, SYCL, OpenCL, Metal,
+  RPC, and dynamic backend loading are all OFF. The registered backend list is
+  `CPU` with one device.
+
+No CUDA build, GPU inference, hybrid run, VRAM measurement, or GPU benchmark is
+claimed. Details and the safe follow-up procedure are in
+[RAMforge/docs/handoff/GPU_ENVIRONMENT.md](RAMforge/docs/handoff/GPU_ENVIRONMENT.md).
+
+What was implemented instead:
+
+- forgeCORE `registered_backends()` reports backend names and device counts.
+- A narrow native read-only patch exposes effective layer/output placement
+  (`llama_model_effective_gpu_layers`, `llama_model_layer_device_type`,
+  `llama_model_output_device_type`). CPU loads report zero GPU layers.
+- RAMforge machine profiles include backend inventory, GPU availability, and
+  device total/free memory. `execution_readiness` states CPU/GPU capability.
+- `RuntimePlan` schema 2 represents CPU/GPU/hybrid modes and requested/effective
+  GPU layers. GPU requests fail explicitly when no backend/device is registered;
+  non-CPU plans are rejected by the service with no silent CPU fallback.
+- CPU regression remains green: 617 RAMforge tests passed, 30 ignored; 415
+  forgeCORE tests passed, 9 ignored. Latest release matrix: balanced 8 threads
+  223.04 tok/s (P25–P75 218.94–224.91), maximum-performance 4 threads repacked
+  205.25, balanced 4 threads 203.92, background 81.44. Earlier sessions measured
+  about 25% higher absolute rates; the 8-over-4 ordering was reproduced.
+
 ## Current validation entry points
 
 ```sh
