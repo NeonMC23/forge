@@ -219,10 +219,21 @@ models through a real CUDA-enabled native backend.
 - Same-session SmolLM2 comparison (32 tokens): CPU 225.34 tok/s, 2 staged
   layers 204.30, full GPU 483.15. Static multi-layer staging is architectural
   and correctness evidence, not a throughput win on this small model.
-- Staged layers remain static for the context lifetime. Plans explicitly report
-  `eviction_supported=false`, `allocation_reuse_supported=false`, and
-  `transfer_compute_overlap_supported=false`. Decision: **MULTI-LAYER GPU
-  RESIDENCY VALIDATED — DYNAMIC EVICTION STILL UNSUPPORTED**. See
+- Dynamic same-context residency is validated: `llama_context_invalidate_graph()`
+  quiesces backend work, destroys cached graph nodes and substituted sources,
+  and resets scheduler mappings before staged layers are evicted.
+- SmolLM2 replaced layers 0+1 with 1+2 across five cycles (5 invalidations,
+  5 releases, 7 allocations, 0 reuse). Median replacement: invalidation
+  0.019 ms, eviction 0.137 ms, staging 3.028 ms, total 3.188 ms.
+- Corrupting the replacement `blk.1.attn_q.weight` changed logits by 10.25 with
+  9 substitutions, proving the new staged selection is consumed.
+- Qwen2.5-7B replaced layers 0–6 (989,857,792 B) with 7–13 (953,903,104 B) and
+  back in one live context (~2.0 s per replacement) with coherent output.
+- Injected staging failures roll back to the previous selection; failed rollback
+  moves the service to `failed` and rejects generation. Allocation capacity
+  reuse and transfer/compute overlap remain unsupported and are reported
+  explicitly. Decision: **DYNAMIC GPU RESIDENCY VALIDATED — ALLOCATION REUSE
+  NOT YET SUPPORTED**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
