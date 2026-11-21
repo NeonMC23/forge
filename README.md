@@ -201,9 +201,19 @@ models through a real CUDA-enabled native backend.
   model remained usable. **Inference did not consume the staged data.**
 - Transfer matrix: pinned 2.6–183 MiB at roughly 4.7–5.4 GB/s, with 4–32 µs
   submission; 1,000 stats snapshots in 78.7 µs. Direct NVMe remains 1.3–1.8 GB/s.
-- Graph/scheduler and model-buffer ownership still lack per-layer
-  allocation/release, rebinding, and a layer-boundary consume hook. Decision:
-  **TRANSFER PRIMITIVES VALIDATED — GRAPH INTEGRATION STILL REQUIRED**. See
+- Graph-integrated single-layer staged inference is validated: SmolLM2 layer 0
+  is allocated in independent CUDA storage, filled through the staging engine,
+  and substituted into graph weight sources before scheduler allocation.
+  Evidence: 9 substitutions per graph, equal argmax, logit cosine 0.9933,
+  matching generated text, and a corruption control that changed logits.
+- Qwen2.5-7B layer 0 staged: 149,112,832 bytes, 24 substitutions, 5.84 tok/s
+  with 27 CPU layers.
+- Release comparison (SmolLM2, 32 tokens): CPU 265.72 tok/s, staged layer 0
+  269.04, full GPU 492.19. Single-layer staging is architectural evidence, not
+  a throughput win.
+- Staged layers are static for the context lifetime; no multi-layer eviction,
+  reuse, or transfer/compute overlap. Decision: **SINGLE-LAYER STAGED INFERENCE
+  VALIDATED — PERFORMANCE OR SCALABILITY WORK REMAINS**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
