@@ -172,6 +172,13 @@ No CUDA build, GPU inference, hybrid run, VRAM measurement, or GPU benchmark is
 claimed. Details and the safe follow-up procedure are in
 [RAMforge/docs/handoff/GPU_ENVIRONMENT.md](RAMforge/docs/handoff/GPU_ENVIRONMENT.md).
 
+Exact recovery proposal (not executed): reboot to load the installed 620.70.06
+kernel module, then install `cuda-devel cuda-gcc gcc15-c++` from
+`nobara-nvidia-production` (CUDA 13.2, GCC 15 host compiler). A guarded
+`forgeCORE/scripts/setup-native-cuda.sh` and
+`FORGE_LLAMA_BUILD_DIR=build-cuda` preserve the CPU build and the native pin.
+The script refuses to run while `nvidia-smi` or `nvcc` is unusable.
+
 What was implemented instead:
 
 - forgeCORE `registered_backends()` reports backend names and device counts.
