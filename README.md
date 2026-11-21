@@ -187,7 +187,8 @@ What was implemented instead:
   forgeCORE tests passed, 9 ignored. Latest release matrix: balanced 8 threads
   223.04 tok/s (P25–P75 218.94–224.91), maximum-performance 4 threads repacked
   205.25, balanced 4 threads 203.92, background 81.44. Earlier sessions measured
-  about 25% higher absolute rates; the 8-over-4 ordering was reproduced.
+  about 25% higher absolute rates, and a final spot check reversed the 4/8
+  ranking (229.50 vs 219.91); no reliable 4-vs-8 winner is claimed.
 
 ## Current validation entry points
 
