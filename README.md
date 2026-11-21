@@ -127,6 +127,33 @@ The 4G/1G/100M 20B cases were not run. See
 [RAMforge/README.md](RAMforge/README.md#enforced-host-memory-budgets-cgroup-v2)
 for the enforced matrix, performance, and limitations.
 
+### Architecture-aware planning and release throughput (2026-11-21)
+
+RAMforge now records dense/MoE architecture metadata from GGUF (layers, heads,
+KV heads, context, expert counts, and a routed-expert fraction that is not a
+complete active-parameter ratio). A versioned memory hierarchy separates host
+RAM, cgroup budget, per-device memory, storage, file-backed mappings,
+anonymous/process memory, KV estimate, compute/graph, backend buffers, and
+staging; overlapping categories are never summed, and placement stays unknown
+unless evidence exists. The local service exposes `architecture` and
+`hierarchy` in addition to `capabilities` and `status`.
+
+Release-build throughput on SmolLM2-135M Q4_K_M (256 context, 32 tokens, 5
+runs + 1 warmup, CPU-only, warm/uncontrolled): balanced 8 threads 283.81 tok/s
+(P25–P75 281.77–285.24), balanced 4 threads 267.65 (259.09–267.99),
+maximum-performance 4 threads repacked 263.47, background 102.80. An
+order-reversed session reproduced the 8-over-4 ordering; absolute rates vary
+between sessions. Benchmark JSON now carries the resolved plan and exact
+effective configuration.
+
+A fresh 20B out-of-core run re-verified the existing paging path: 13.13 GB
+GPT-NeoX-20B Q4_K_M under an 8 GiB cgroup with `--no-repack --no-prefetch`
+produced one token, exit 0, 10.877 s wall, 9661 `max` events, and 0 OOM kills.
+This is fit under reclaim, not throughput, and page release/prefetch remains OS
+paging rather than tensor/layer streaming. No GPU backend was built or
+validated. See
+[RAMforge/docs/handoff/LARGE_MODEL_EXECUTION.md](RAMforge/docs/handoff/LARGE_MODEL_EXECUTION.md).
+
 ## Current validation entry points
 
 ```sh
