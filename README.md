@@ -192,11 +192,18 @@ models through a real CUDA-enabled native backend.
 - Read-only tensor storage introspection identifies every model tensor's
   buffer, device, layer, quantization, file-backed state, and bytes. SmolLM2
   exposes 273 tensors in 2 model buffers; layer 0 is 2,596,608 bytes.
-- Controlled staging investigation: measured pinned H2D 6.30 GB/s, pageable
-  5.10 GB/s, direct NVMe 1.3–1.8 GB/s. Dense per-token staging is not viable at
-  these limits. Graph/scheduler and model-buffer ownership lack per-layer
-  allocation/release and boundary hooks. Decision: **READY AFTER SPECIFIC
-  NATIVE PRIMITIVES**. See
+- Native staging primitives are implemented and physically validated:
+  bounded pageable/pinned/device buffers, handle lifecycle, private CUDA
+  stream, events, H2D/D2H transfers, counters, high-water bytes, and explicit
+  release/double-release/busy failure behavior.
+- Single-layer prototype: SmolLM2 layer 0, 2,596,608 bytes, byte-identical
+  round trip (FNV-1a), H2D 6.53 GB/s, D2H 5.41 GB/s; buffers released and the
+  model remained usable. **Inference did not consume the staged data.**
+- Transfer matrix: pinned 2.6–183 MiB at roughly 4.7–5.4 GB/s, with 4–32 µs
+  submission; 1,000 stats snapshots in 78.7 µs. Direct NVMe remains 1.3–1.8 GB/s.
+- Graph/scheduler and model-buffer ownership still lack per-layer
+  allocation/release, rebinding, and a layer-boundary consume hook. Decision:
+  **TRANSFER PRIMITIVES VALIDATED — GRAPH INTEGRATION STILL REQUIRED**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
