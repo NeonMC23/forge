@@ -201,19 +201,28 @@ models through a real CUDA-enabled native backend.
   model remained usable. **Inference did not consume the staged data.**
 - Transfer matrix: pinned 2.6–183 MiB at roughly 4.7–5.4 GB/s, with 4–32 µs
   submission; 1,000 stats snapshots in 78.7 µs. Direct NVMe remains 1.3–1.8 GB/s.
-- Graph-integrated single-layer staged inference is validated: SmolLM2 layer 0
-  is allocated in independent CUDA storage, filled through the staging engine,
-  and substituted into graph weight sources before scheduler allocation.
-  Evidence: 9 substitutions per graph, equal argmax, logit cosine 0.9933,
-  matching generated text, and a corruption control that changed logits.
-- Qwen2.5-7B layer 0 staged: 149,112,832 bytes, 24 substitutions, 5.84 tok/s
-  with 27 CPU layers.
-- Release comparison (SmolLM2, 32 tokens): CPU 265.72 tok/s, staged layer 0
-  269.04, full GPU 492.19. Single-layer staging is architectural evidence, not
-  a throughput win.
-- Staged layers are static for the context lifetime; no multi-layer eviction,
-  reuse, or transfer/compute overlap. Decision: **SINGLE-LAYER STAGED INFERENCE
-  VALIDATED — PERFORMANCE OR SCALABILITY WORK REMAINS**. See
+- Graph-integrated multi-layer staged inference is validated: SmolLM2 layers
+  0+1 are allocated independently in CUDA storage, filled through the staging
+  engine, and substituted into graph weight sources before scheduler
+  allocation. Evidence: 2 layers × 2,598,964 B, 18 substitutions per layer
+  over warmup + measured graph, matching generated text, and exact budget
+  accounting.
+- Budget planning is deterministic and native-exact: per-layer CUDA bytes are
+  queried before allocation, explicit layer sets are all-or-nothing, and auto
+  selection may be partial. Effective budget = min(configured, observed free
+  VRAM − safety margin), default margin 256 MiB. A 1M explicit request was
+  rejected as a set before allocation; auto 10M accepted layers 0–3
+  (10,126,160 B).
+- Qwen2.5-7B auto with a 1G budget staged 7 layers (989,857,792 B, 24
+  substitutions per layer), rejected 21 by budget, and generated coherent text
+  at 4.40 tok/s with TTFT 329.2 ms.
+- Same-session SmolLM2 comparison (32 tokens): CPU 225.34 tok/s, 2 staged
+  layers 204.30, full GPU 483.15. Static multi-layer staging is architectural
+  and correctness evidence, not a throughput win on this small model.
+- Staged layers remain static for the context lifetime. Plans explicitly report
+  `eviction_supported=false`, `allocation_reuse_supported=false`, and
+  `transfer_compute_overlap_supported=false`. Decision: **MULTI-LAYER GPU
+  RESIDENCY VALIDATED — DYNAMIC EVICTION STILL UNSUPPORTED**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
