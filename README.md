@@ -222,18 +222,23 @@ models through a real CUDA-enabled native backend.
 - Dynamic same-context residency is validated: `llama_context_invalidate_graph()`
   quiesces backend work, destroys cached graph nodes and substituted sources,
   and resets scheduler mappings before staged layers are evicted.
-- SmolLM2 replaced layers 0+1 with 1+2 across five cycles (5 invalidations,
-  5 releases, 7 allocations, 0 reuse). Median replacement: invalidation
-  0.019 ms, eviction 0.137 ms, staging 3.028 ms, total 3.188 ms.
-- Corrupting the replacement `blk.1.attn_q.weight` changed logits by 10.25 with
-  9 substitutions, proving the new staged selection is consumed.
-- Qwen2.5-7B replaced layers 0–6 (989,857,792 B) with 7–13 (953,903,104 B) and
-  back in one live context (~2.0 s per replacement) with coherent output.
-- Injected staging failures roll back to the previous selection; failed rollback
-  moves the service to `failed` and rejects generation. Allocation capacity
-  reuse and transfer/compute overlap remain unsupported and are reported
-  explicitly. Decision: **DYNAMIC GPU RESIDENCY VALIDATED — ALLOCATION REUSE
-  NOT YET SUPPORTED**. See
+- Bounded allocation reuse is validated: evicted CUDA buffers enter a best-fit
+  pool and are reused. SmolLM2 pipeline cycles held allocation count at 4 while
+  reuse advanced 0→2→4→6→8; non-pipelined replacement stabilized at 3
+  allocations with reuse 1,1,2,3.
+- Pending double buffering and async batch transfers are validated. The active
+  selection computes while a complete pending slot is filled on a private
+  low-priority CUDA stream with start/completion events.
+- Measured overlap: SmolLM2 transfer 0.94–1.31 ms hidden inside 70–78 ms compute;
+  Qwen2.5-7B transfer 85–109 ms hidden inside 400–535 ms compute (100% of
+  transfer).
+- Corrupting a committed pending layer changed logits by 10.25 with 9
+  substitutions, proving pipeline inference consumes the staged slot.
+- No end-to-end win: Qwen overlapped 892.3 ms vs synchronized-batch 860.4 ms
+  over three cycles; concurrent DMA slowed compute by about the hidden transfer
+  time. Pipeline mode is experimental and not the default.
+- Decision: **ALLOCATION REUSE, DOUBLE BUFFERING AND ASYNC TRANSFERS VALIDATED
+  — OVERLAP MEASURED WITHOUT END-TO-END THROUGHPUT GAIN**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
