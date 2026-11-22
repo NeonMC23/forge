@@ -237,17 +237,16 @@ models through a real CUDA-enabled native backend.
 - No end-to-end win: Qwen overlapped 892.3 ms vs synchronized-batch 860.4 ms
   over three cycles; concurrent DMA slowed compute by about the hidden transfer
   time. Pipeline mode is experimental and not the default.
-- Hardware calibration is validated: pinned H2D 6.3–7.1 GB/s, pageable
-  4.7–5.7 GB/s, 64 KiB latency 8–21 µs, and chunking within 2.5% of one batch.
-- Adaptive scheduling is implemented with interleaved exploration, page-cache
-  warming, profile hysteresis (2% Maximum Performance, 5% Balanced), Background
-  no-prefetch and deterministic synchronous fallback.
-- Smallest-first residency selected 8 Qwen2.5-7B layers (1,049,083,904 B) versus
-  7 ascending (989,857,792 B) and measured 6.418 vs 6.161 tok/s over five runs.
-- Adaptive overlap did not reliably beat synchronous preparation and remains
-  opt-in. Decision: **HARDWARE PERFORMANCE MODEL VALIDATED — ADAPTIVE
-  SCHEDULING AND RESIDENCY POLICY IMPLEMENTED — OVERLAP REMAINS SLOWER THAN
-  SYNCHRONOUS**. See
+- Host staging is optimized: direct positional reads into pinned memory, exact
+  GGUF range coalescing, cached tensor mappings and a bounded pinned pool.
+- Qwen four-layer host preparation: 276 ms by pageable copy, 190 ms direct
+  per-tensor, 178 ms direct coalesced; read time 137→70 ms; 48 tensors → 2 groups.
+- Async file-to-pinned reads overlap generation. Five-cycle order-controlled
+  Qwen medians: 728.4/758.2 ms synchronous vs 691.4/687.2 ms async (~7% lower).
+- Split GGUF direct reads were byte-verified against model tensor reads for two
+  shard files, and layers 20–23 generated coherent text.
+- Decision: **HOST STAGING PIPELINE OPTIMIZED — DIRECT COALESCED PINNED READS
+  AND ASYNC HOST READ OVERLAP MEASURED**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
