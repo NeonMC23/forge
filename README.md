@@ -237,8 +237,17 @@ models through a real CUDA-enabled native backend.
 - No end-to-end win: Qwen overlapped 892.3 ms vs synchronized-batch 860.4 ms
   over three cycles; concurrent DMA slowed compute by about the hidden transfer
   time. Pipeline mode is experimental and not the default.
-- Decision: **ALLOCATION REUSE, DOUBLE BUFFERING AND ASYNC TRANSFERS VALIDATED
-  — OVERLAP MEASURED WITHOUT END-TO-END THROUGHPUT GAIN**. See
+- Hardware calibration is validated: pinned H2D 6.3–7.1 GB/s, pageable
+  4.7–5.7 GB/s, 64 KiB latency 8–21 µs, and chunking within 2.5% of one batch.
+- Adaptive scheduling is implemented with interleaved exploration, page-cache
+  warming, profile hysteresis (2% Maximum Performance, 5% Balanced), Background
+  no-prefetch and deterministic synchronous fallback.
+- Smallest-first residency selected 8 Qwen2.5-7B layers (1,049,083,904 B) versus
+  7 ascending (989,857,792 B) and measured 6.418 vs 6.161 tok/s over five runs.
+- Adaptive overlap did not reliably beat synchronous preparation and remains
+  opt-in. Decision: **HARDWARE PERFORMANCE MODEL VALIDATED — ADAPTIVE
+  SCHEDULING AND RESIDENCY POLICY IMPLEMENTED — OVERLAP REMAINS SLOWER THAN
+  SYNCHRONOUS**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
