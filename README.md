@@ -254,8 +254,13 @@ models through a real CUDA-enabled native backend.
   hit-rate impact.
 - `io_uring` was evaluated and rejected: runtime libraries/sysctl exist, headers
   are absent, and coalesced pread already saturates the warm-cache workload.
-- Decision: **BOUNDED STORAGE PIPELINE IMPLEMENTED — COALESCED PRE-READ REMAINS
-  BEST — PREDICTIVE PREFETCH ACCOUNTED**. See
+- Partial residency is validated: shared active layers keep their device
+  allocations, only new layers are read/transferred, and obsolete layers are
+  removed atomically. Qwen `[0,1,2,3] → [2,3,4,5]` read/transferred 280/298 MB
+  instead of 560/578 MB, preserved 280 MB, and reduced transition median from
+  ~82–88 ms to ~42–44 ms. Removal-only transitions transfer zero bytes.
+- Decision: **PARTIAL RESIDENCY VALIDATED — SHARED LAYERS PRESERVED, ONLY
+  DELTAS READ AND TRANSFERRED, TRANSITION LATENCY ROUGHLY HALVED**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
