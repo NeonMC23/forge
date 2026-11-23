@@ -259,8 +259,18 @@ models through a real CUDA-enabled native backend.
   removed atomically. Qwen `[0,1,2,3] → [2,3,4,5]` read/transferred 280/298 MB
   instead of 560/578 MB, preserved 280 MB, and reduced transition median from
   ~82–88 ms to ~42–44 ms. Removal-only transitions transfer zero bytes.
-- Decision: **PARTIAL RESIDENCY VALIDATED — SHARED LAYERS PRESERVED, ONLY
-  DELTAS READ AND TRANSFERRED, TRANSITION LATENCY ROUGHLY HALVED**. See
+- A bounded VRAM standby cache makes repeated alternating transitions
+  zero-read: Qwen `[0..3] ↔ [2..5]` reads/transfers 280 MB on the first
+  transition, then 0 bytes and completes in 0.2–1.2 ms while promoting two
+  layers. Transition prediction supports repeat/alternating/constant-shift
+  patterns with a horizon of one pending selection.
+- Profile thread defaults now use physical cores. Qwen staged five-run medians:
+  6.200/5.753 tok/s at 6 physical threads vs 3.965/2.104 at 12 logical threads.
+- CUPTI activity tracing is available through `forgeCORE/tools`; graph-replay
+  kernel timestamps are incomplete, while graph-disabled attribution shows about
+  60% kernel occupancy.
+- Decision: **PARTIAL RESIDENCY + STANDBY VALIDATED — REPEATED TRANSITIONS
+  ZERO-READ — PHYSICAL-CORE THREAD DEFAULT IMPROVES STAGED TPS**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
