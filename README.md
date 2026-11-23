@@ -245,8 +245,17 @@ models through a real CUDA-enabled native backend.
   Qwen medians: 728.4/758.2 ms synchronous vs 691.4/687.2 ms async (~7% lower).
 - Split GGUF direct reads were byte-verified against model tensor reads for two
   shard files, and layers 20–23 generated coherent text.
-- Decision: **HOST STAGING PIPELINE OPTIMIZED — DIRECT COALESCED PINNED READS
-  AND ASYNC HOST READ OVERLAP MEASURED**. See
+- Bounded multi-request storage reads are implemented with configurable
+  concurrency and outstanding-byte limits. Coalesced c=1 remains best
+  (59.9 ms) versus 61.0/83.5 ms at c=2/4; per-tensor c=4 improves that path but
+  does not beat coalesced.
+- Predictive next-selection prefetch is accounted explicitly: three SmolLM2
+  cycles committed 15,040,512 B with zero waste; abort records wasted bytes and
+  hit-rate impact.
+- `io_uring` was evaluated and rejected: runtime libraries/sysctl exist, headers
+  are absent, and coalesced pread already saturates the warm-cache workload.
+- Decision: **BOUNDED STORAGE PIPELINE IMPLEMENTED — COALESCED PRE-READ REMAINS
+  BEST — PREDICTIVE PREFETCH ACCOUNTED**. See
   [RAMforge/docs/handoff/STAGING_ARCHITECTURE.md](RAMforge/docs/handoff/STAGING_ARCHITECTURE.md).
 
 CPU/GPU greedy text can diverge after the shared prefix due to quantized
